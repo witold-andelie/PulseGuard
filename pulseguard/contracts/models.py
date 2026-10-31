@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 
 class FindingState(StrEnum):
@@ -106,6 +106,8 @@ class Verdict(_Strict):
     role: Role = "adjudicator"
     model: str = "unknown"
     case_id: str | None = None
+    # Off-contract: a system substitute for an unusable model reply (not a model claim).
+    _system_fallback: bool = PrivateAttr(default=False)
 
     def to_payload(self) -> dict[str, Any]:
         return self.model_dump(mode="json", exclude_none=True)

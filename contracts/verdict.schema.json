@@ -22,7 +22,7 @@
     "band": { "type": "string", "enum": ["confirmed", "uncertain", "false_positive", "abstained"] },
     "cited_evidence": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^E[0-9]+$" },
+      "items": { "type": "string", "pattern": "^[A-Z][0-9]+$" },
       "uniqueItems": true
     },
     "step1_dataflow": { "type": "string" },

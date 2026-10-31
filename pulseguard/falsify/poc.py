@@ -177,6 +177,7 @@ def witness(
     timeout cannot establish repair and fails closed before approval.
     """
     result: dict[str, Any] = {
+        "case_id": case_id,
         "status": "not_witnessed", "route": None, "params": {}, "before": {}, "after": {},
         "detail": "PoC witness: inconclusive; bundled demo source required",
     }

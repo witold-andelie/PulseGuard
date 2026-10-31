@@ -266,27 +266,46 @@ The deliberately vulnerable Flask service uses a throwaway SQLite fixture in its
 ## Stretch: z3 constraint solving (ST-1)
 
 On the taint path inside the sink's function, PulseGuard extracts input validators
-(`re.fullmatch` / anchored `re.match`, `len(x) <= N`, and optionally `isdigit` /
-`isalnum`), records the exact source lines, and asks z3 whether a value that passes
-them can still contain a single quote.
+(`re.fullmatch` / anchored `re.match`, length bounds, and optionally character
+checks), records their exact source lines, and uses Python's AST to classify how
+the value enters SQL. A quoted string sink asks whether a quote can pass. An
+unquoted numeric sink asks whether **any character outside `[0-9]`** can pass:
+`1 OR 1=1` needs no quote. Unclassifiable SQL makes no claim.
 
-| Validator | Result |
+| Validator / sink | Result |
 | --- | --- |
-| `^[A-Za-z0-9_-]{1,12}$` | unsat: a quote cannot pass |
-| `^[A-Za-z0-9_\\-' ]{1,32}$` | sat, witness `'` |
-| length ≤ 8 only | sat: `' OR 1=1` (8 characters) fits |
-| lookahead / backreference | unknown (no claim) |
+| `^[A-Za-z0-9_-]{1,12}$` / string | unsat: a quote cannot pass |
+| `^[0-9]{1,8}$` / numeric | unsat: a non-digit cannot pass |
+| length ≤ 8 only / numeric | sat: `1 OR 1=1` fits |
+| lookahead / backreference / unknown SQL context | unknown (no claim) |
 
-`unsat` is strong counter-evidence against SQLi through that parameter and is emitted
-as Hard Evidence item E6, for example
-`validator model: ^[0-9]{1,8}$ admits a quote? unsat`. `sat` yields a witness string
-that can seed a PoC. `unknown` is returned for any regex construct outside the small
-translated subset and makes no claim. The Verifier checks that the validator lines E6
-refers to exist in the target at those line numbers with that exact text.
+**Rule 1: symbolic checks may veto a neural conclusion, never decide one.** Solved
+checks become E6, for example `validator model: ^[0-9]{1,8}$ admits a non-digit
+(numeric sink)? unsat`. E6 informs the adjudicator's Constraint step. After
+Verifying, an `unsat` proof blocks a score in the confirmed band only when every
+modelled validator is a top-level exit guard on the same variable in the sink's
+function, before the sink, with no intervening reassignment or possible mutation.
+Nested guards, helpers, swallowed exceptions or uncertainty disable this veto.
+The contradiction abstains the verdict and escalates the finding for human review,
+before blast-radius scoring or remediation. It never lowers the model's score or
+decides `false_positive`; a low-score decision remains the adjudicator's.
 
-Labelled examples live in `demo_target/z3_cases/` and are **not** registered by the
-demo app. The graph hook (not applied in this worktree; see the merge note) is to pass
-`code=` into `build_hard_evidence` during evidence building, before adjudication.
+Only an already available E5 PoC with `status=witnessed` for this case overrides
+the veto. The normal graph produces E5 after remediation, sandbox verification
+and counterfactual checking, so it is unavailable at the veto and the veto stands.
+The pipeline order is unchanged. A `sat` string can seed a later PoC proposal.
+
+**Rule 2: unknown is an analysis limit, not evidence.** Unsupported constructs and
+solver timeouts receive an L-id in a separate Analysis Limits section, never an
+E-id or a Hard Evidence item. The case payload exposes `analysis_limits`; the UI
+labels these “Not covered (analysis limit)” and explains why. L-ids must never be
+cited. Any citation of a limit, an unknown/non-claim item or a missing id invalidates
+the verdict and escalates the case, including low-score verdicts. The Verifier
+also checks E6's validator lines against their exact text in the target.
+
+Non-executing examples live in `demo_target/z3_cases/` and are **not** registered by
+the demo app. They contain no evaluation labels or SQL execute calls and do not
+change the evaluation corpus. Evidence and limits are built before adjudication.
 
     .venv/Scripts/python -m pytest tests/test_z3_check.py -q
 

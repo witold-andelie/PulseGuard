@@ -19,7 +19,7 @@ def _lines(name: str) -> tuple[str, list[str], str]:
 
 def _source_sink(lines: list[str]) -> tuple[int, int]:
     source = next(i for i, line in enumerate(lines, 1) if "request.args.get" in line)
-    sink = next(i for i, line in enumerate(lines, 1) if line.strip() == "return order_id")
+    sink = next(i for i, line in enumerate(lines, 1) if line.strip().startswith('return "SELECT'))
     return source, sink
 
 
@@ -39,7 +39,8 @@ def test_alnum_class_is_unsat():
     assert item is not None
     assert item.evidence_id == "E6"
     assert item.kind == "constraint"
-    assert item.text == r"validator model: ^[A-Za-z0-9_-]{1,12}$ admits a quote? unsat"
+    assert item.text == (
+        r"validator model: ^[A-Za-z0-9_-]{1,12}$ admits a quote (string sink)? unsat")
 
 
 def test_quote_class_is_sat_with_quote_witness():
@@ -49,7 +50,8 @@ def test_quote_class_is_sat_with_quote_witness():
     assert result.witness == "'"
     item = constraint_item(result)
     assert item is not None
-    assert item.text == r"validator model: ^[A-Za-z0-9_\-' ]{1,32}$ admits a quote? sat"
+    assert item.text == (
+        r"validator model: ^[A-Za-z0-9_\-' ]{1,32}$ admits a quote (string sink)? sat")
 
 
 def test_length_only_is_sat_with_classic_payload():
@@ -60,7 +62,7 @@ def test_length_only_is_sat_with_classic_payload():
     assert len(result.witness) <= 8
     item = constraint_item(result)
     assert item is not None
-    assert item.text == "validator model: length <= 8 admits a quote? sat"
+    assert item.text == "validator model: length <= 8 admits a quote (string sink)? sat"
 
 
 def test_lookahead_is_unknown_and_makes_no_claim():
@@ -70,10 +72,7 @@ def test_lookahead_is_unknown_and_makes_no_claim():
     assert result.witness is None
     assert result.validators
     item = constraint_item(result)
-    assert item is not None
-    assert item.text == (
-        r"validator model: ^(?=.*[A-Z])[A-Za-z0-9]{1,12}$ admits a quote? unknown")
-    assert item.payload["claim"] is False
+    assert item is None
 
 
 def test_unanchored_match_and_backreference_are_unknown():
@@ -192,4 +191,5 @@ def test_graph_evidence_node_puts_e6_in_the_adjudicator_block():
 
     deps = GraphDeps(adjudicate=adjudicate, scanner=EchoScanner(finding), target_root=REPO_ROOT)
     build_graph(deps).compile().invoke({"finding": finding, "code": code})
-    assert "[E6] validator model: ^[A-Za-z0-9_-]{1,12}$ admits a quote? unsat" in seen["block"]
+    assert ("[E6] validator model: ^[A-Za-z0-9_-]{1,12}$ admits a quote (string sink)? unsat"
+            in seen["block"])

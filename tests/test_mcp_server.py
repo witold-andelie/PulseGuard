@@ -62,7 +62,7 @@ def test_triage_finding_builds_e6_for_labelled_unsat(monkeypatch):
         encoding="utf-8")
     lines = code.splitlines()
     source = next(i for i, line in enumerate(lines, 1) if "request.args.get" in line)
-    sink = next(i for i, line in enumerate(lines, 1) if line.strip() == "return order_id")
+    sink = next(i for i, line in enumerate(lines, 1) if line.strip().startswith('return "SELECT'))
     finding = {
         "case_id": "PG-mcp-z3", "fingerprint": "ab" * 16, "rule_id": "flask-sqli-taint",
         "scanner": "semgrep", "file": "demo_target/z3_cases/alnum_unsat.py",

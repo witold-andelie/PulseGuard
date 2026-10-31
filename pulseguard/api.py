@@ -258,6 +258,7 @@ def create_app(
             "mode": info["mode"],
             "case": case,
             "evidence": store.list_evidence(case_id),
+            "analysis_limits": runtime.get("analysis_limits") or [],
             "verdicts": store.list_verdicts(case_id),
             "patches": store.list_patches(case_id),
             "approvals": store.list_approvals(case_id),

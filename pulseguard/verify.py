@@ -39,15 +39,24 @@ def _safe_join(root: Path, rel: str) -> Path | None:
 
 
 def check_cited_evidence(cited: Iterable[str], evidence: list[dict[str, Any]]) -> Check:
-    """Every cited evidence id exists in the Hard Evidence Block."""
-    known = {item["evidence_id"] for item in evidence}
+    """Every citation names a claim-bearing E-item present in this case."""
+    known = {item["evidence_id"] for item in evidence
+             if re.fullmatch(r"E[1-9][0-9]*", str(item.get("evidence_id", "")))
+             and item.get("claim") is not False
+             and (item.get("payload") or {}).get("claim") is not False
+             and item.get("result") != "unknown"
+             and item.get("status") != "unknown"
+             and item.get("solver_status") != "unknown"
+             and (item.get("payload") or {}).get("result") != "unknown"
+             and (item.get("payload") or {}).get("status") != "unknown"
+             and (item.get("payload") or {}).get("solver_status") != "unknown"}
     cited_ids = [str(item) for item in cited]
     missing = [item for item in cited_ids if item not in known]
     if not cited_ids:
         return _check("cited_evidence", False, "no evidence cited")
     if missing:
-        return _check("cited_evidence", False, f"unknown evidence ids: {missing}")
-    return _check("cited_evidence", True, "all cited evidence ids exist")
+        return _check("cited_evidence", False, f"unknown or non-claim evidence ids: {missing}")
+    return _check("cited_evidence", True, "all cited ids name claim-bearing evidence")
 
 
 def check_cited_location(

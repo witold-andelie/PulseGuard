@@ -1,7 +1,7 @@
 """z3 constraint solving on input validators (framework 6, ST-1).
 
-Question: can a value that passes the validators on the taint path still contain a
-single quote (configurable needle)? ``unsat`` is strong counter-evidence against
+Question: can a value that passes the validators still contain a quote (string
+sink) or any non-digit (numeric sink)? ``unsat`` is counter-evidence against
 SQLi through that parameter; ``sat`` yields a witness that can seed a PoC;
 ``unknown`` makes no claim.
 
@@ -60,6 +60,8 @@ class ConstraintResult:
     validators: tuple[Validator, ...]
     detail: str
     claim: bool
+    context: str = "unknown"
+    question: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -103,6 +105,222 @@ def _uses_names(node: ast.AST, names: set[str]) -> bool:
     return any(isinstance(child, ast.Name) and child.id in names for child in ast.walk(node))
 
 
+def _local_nodes(fn: ast.AST):
+    """Walk a function without attributing a nested scope's checks to it."""
+    yield fn
+    for child in ast.iter_child_nodes(fn):
+        if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            yield from _local_nodes(child)
+
+
+def sink_context(code: str, source_line: int, sink_line: int) -> dict[str, Any]:
+    """Classify only plain SQL concatenation/f-strings with a single tainted name.
+
+    SQL comments, escapes, identifiers, transformations and ambiguous definitions
+    are outside this small model. A returned SQL expression is also supported for
+    non-executing fixtures; returning a bare input is not a SQL sink.
+    """
+    unknown = {"context": "unknown", "name": None, "reason": "unclassifiable SQL sink"}
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return unknown
+    fn = _enclosing_function(tree, sink_line)
+    if fn is None:
+        return unknown
+    tainted = _tainted_in(fn, source_line, sink_line)
+    nodes = list(_local_nodes(fn))
+    expressions = [node.args[0] for node in nodes if isinstance(node, ast.Call)
+                   and isinstance(node.func, ast.Attribute) and node.func.attr == "execute"
+                   and node.lineno <= sink_line <= (node.end_lineno or node.lineno) and node.args]
+    if not expressions:
+        expressions = [node.value for node in nodes
+                       if isinstance(node, (ast.Return, ast.Assign, ast.AnnAssign))
+                       and node.lineno == sink_line and node.value is not None]
+    if len(expressions) != 1:
+        return unknown
+
+    def parts(node: ast.AST, before: int, seen: set[str]) -> list[str | ast.Name]:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return [node.value]
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return parts(node.left, before, seen) + parts(node.right, before, seen)
+        if isinstance(node, ast.JoinedStr):
+            out: list[str | ast.Name] = []
+            for value in node.values:
+                if isinstance(value, ast.FormattedValue):
+                    if value.conversion != -1 or value.format_spec is not None:
+                        raise ValueError
+                    value = value.value
+                out.extend(parts(value, before, seen))
+            return out
+        if isinstance(node, ast.Name) and node.id not in seen:
+            assignments = [item for item in nodes if isinstance(item, (ast.Assign, ast.AnnAssign))
+                           and item.lineno < before
+                           and any(isinstance(t, ast.Name) and t.id == node.id for t in (
+                               item.targets if isinstance(item, ast.Assign) else [item.target]))]
+            if assignments:
+                assignment = max(assignments, key=lambda item: item.lineno)
+                # Expand query aliases, but keep validated input names as holes.
+                if assignment.value is not None and isinstance(
+                    assignment.value, (ast.BinOp, ast.JoinedStr, ast.Name)
+                ):
+                    if assignment not in fn.body:
+                        raise ValueError
+                    for later in nodes:
+                        if not assignment.lineno < getattr(later, "lineno", 0) < before:
+                            continue
+                        if isinstance(later, (ast.AugAssign, ast.NamedExpr, ast.Delete)):
+                            if _uses_names(later, {node.id}):
+                                raise ValueError
+                    return parts(assignment.value, assignment.lineno, seen | {node.id})
+            if node.id in tainted:
+                return [node]
+        raise ValueError
+
+    try:
+        pieces = parts(expressions[0], sink_line + 1, set())
+    except ValueError:
+        return unknown
+    prefix = ""
+    quoted = False
+    contexts: set[str] = set()
+    names: set[str] = set()
+    value_lines: list[int] = []
+    for piece in pieces:
+        if isinstance(piece, str):
+            if any(token in piece for token in ("--", "/*", "\\", '"', "`")):
+                return unknown
+            quoted ^= bool(piece.count("'") % 2)
+            prefix += piece
+        else:
+            if not re.match(r"\s*(?:SELECT|UPDATE|DELETE|INSERT|WITH)\b", prefix, re.I):
+                return unknown
+            if quoted:
+                contexts.add("string")
+            elif re.search(r"(?:=|<>|!=|<=|>=|<|>)\s*$", prefix):
+                contexts.add("numeric")
+            else:
+                return unknown
+            names.add(piece.id)
+            value_lines.append(piece.lineno)
+            prefix += "?"
+    if quoted or len(contexts) != 1 or len(names) != 1:
+        return unknown
+    return {"context": contexts.pop(), "name": names.pop(), "value_lines": value_lines,
+            "reason": "plain SQL interpolation"}
+
+
+def check_validator_dominance(
+    code: str, *, source_line: int, sink_line: int,
+    validators: list[Validator] | None = None,
+) -> dict[str, Any]:
+    """Every modelled constraint must be an unchanged, same-variable exit guard.
+
+    This deliberately proves only top-level guards, not general control flow.
+    Any uncertainty disables the veto; it never establishes safety.
+    """
+    result = {"dominates": False, "reason": "no dominating validator",
+              "guard_line": None, "sink_line": sink_line}
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return {**result, "reason": "invalid Python"}
+    fn = _enclosing_function(tree, sink_line)
+    context = sink_context(code, source_line, sink_line)
+    name = context["name"]
+    if fn is None or name is None:
+        return {**result, "reason": "sink variable is unknown"}
+    validators = (extract_validators(code, source_line, sink_line)
+                  if validators is None else validators)
+    if not validators:
+        return result
+
+    def exits(body: list[ast.stmt]) -> bool:
+        # No branches/try blocks whose failure exit might be swallowed.
+        if len(body) != 1:
+            return False
+        statement = body[0]
+        if isinstance(statement, (ast.Return, ast.Raise)):
+            return True
+        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+            return False
+        call = ast.unparse(statement.value.func)
+        imports = [*tree.body, *fn.body]
+        known_abort = (call == "abort" and any(
+            isinstance(node, ast.ImportFrom) and node.module == "flask"
+            and any(alias.name == "abort" and alias.asname in (None, "abort")
+                    for alias in node.names) for node in imports
+        )) or (call == "flask.abort" and any(
+            isinstance(node, ast.Import) and any(
+                alias.name == "flask" and alias.asname in (None, "flask") for alias in node.names
+            ) for node in imports
+        ))
+        root_name = call.split(".")[0]
+        rebound = any(
+            (isinstance(node, ast.Name) and node.id == root_name
+             and isinstance(node.ctx, (ast.Store, ast.Del)))
+            or (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                and node.name == root_name)
+            or (isinstance(node, ast.arg) and node.arg == root_name)
+            for node in ast.walk(tree)
+        )
+        return known_abort and not rebound
+
+    for validator in validators:
+        result["guard_line"] = validator.line
+        if validator.name != name:
+            return {**result, "reason": "validator and sink use different variables"}
+        guards = [node for node in fn.body if isinstance(node, ast.If)
+                  and any(getattr(child, "lineno", 0) == validator.line
+                          for child in ast.walk(node.test))]
+        if len(guards) != 1:
+            return {**result, "reason": "validator is not a top-level guard in the sink function"}
+        guard = guards[0]
+        test = guard.test
+        valid_failure = False
+        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+            check = test.operand
+            if isinstance(check, ast.Call):
+                valid_failure = (_match_call(check) is not None
+                                 or _ctype_call(check, {name}) is not None)
+            elif isinstance(check, ast.Compare) and len(check.ops) == 1:
+                valid_failure = (_len_arg(check.left) == name
+                                 and isinstance(check.ops[0], (ast.Lt, ast.LtE)))
+        elif isinstance(test, ast.Compare) and len(test.ops) == 1:
+            valid_failure = (_len_arg(test.left) == name
+                             and isinstance(test.ops[0], (ast.Gt, ast.GtE)))
+        if not valid_failure or not exits(guard.body) or guard.orelse:
+            return {**result, "reason": "guard does not unconditionally exit on validation failure"}
+        if (guard.end_lineno or guard.lineno) >= sink_line:
+            return {**result, "reason": "guard is not before the sink"}
+        if any(line <= guard.end_lineno for line in context["value_lines"]):
+            return {**result, "reason": "SQL value was captured before the guard"}
+        if any(isinstance(node, ast.Nonlocal) and name in node.names for node in ast.walk(fn)):
+            return {**result, "reason": "variable may be reassigned through a closure"}
+        for node in _local_nodes(fn):
+            line = getattr(node, "lineno", 0)
+            if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
+                return {**result, "reason": "sink variable is not local"}
+            if not (guard.end_lineno < line <= sink_line):
+                continue
+            if isinstance(node, ast.Name) and node.id == name and isinstance(
+                node.ctx, (ast.Store, ast.Del)
+            ):
+                return {**result, "reason": "variable reassigned or mutated after guard"}
+            if isinstance(node, (ast.Subscript, ast.Attribute)) and isinstance(
+                node.ctx, (ast.Store, ast.Del)
+            ) and _uses_names(node.value, {name}):
+                return {**result, "reason": "variable mutated after guard"}
+            if isinstance(node, ast.Call) and _uses_names(node, {name}):
+                is_sink = (isinstance(node.func, ast.Attribute) and node.func.attr == "execute"
+                           and line <= sink_line <= (node.end_lineno or line))
+                if (not is_sink and _match_call(node) is None
+                        and _ctype_call(node, {name}) is None and _len_arg(node) != name):
+                    return {**result, "reason": "variable passed to a call after guard"}
+    return {**result, "dominates": True, "reason": "same-variable top-level exit guards dominate"}
+
+
 def _tainted_in(
     fn: ast.FunctionDef | ast.AsyncFunctionDef, source_line: int, sink_line: int,
 ) -> set[str]:
@@ -120,7 +338,7 @@ def _tainted_in(
     changed = True
     while changed:
         before = set(tainted)
-        for node in ast.walk(fn):
+        for node in _local_nodes(fn):
             lineno = getattr(node, "lineno", 0)
             if isinstance(node, ast.Assign):
                 for target in node.targets:
@@ -138,6 +356,10 @@ def _match_call(node: ast.Call) -> tuple[str, ast.AST, ast.AST] | None:
     func = node.func
     if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
             and func.value.id == "re" and func.attr in {"fullmatch", "match"}):
+        return None
+    if len(node.args) > 2 and not (
+        len(node.args) == 3 and isinstance(node.args[2], ast.Constant) and node.args[2].value == 0
+    ):
         return None
     pattern: ast.AST | None = node.args[0] if node.args else None
     string: ast.AST | None = node.args[1] if len(node.args) > 1 else None
@@ -250,7 +472,7 @@ def extract_validators(
             kind=kind, line=lineno, text=_line_text(lines, lineno), file=file, **fields,
         ))
 
-    for node in ast.walk(fn):
+    for node in _local_nodes(fn):
         lineno = getattr(node, "lineno", 0)
         if isinstance(node, ast.Call):
             matched = _match_call(node)
@@ -384,6 +606,8 @@ class _RegexParser:
         from z3 import Re
         if self.eat("("):
             if self.peek() == "?":
+                if self.peek(2) in {"?=", "?!"}:
+                    raise UnsupportedRegex("lookahead")
                 if self.eat("?:"):
                     inner = self.alt()
                     if not self.eat(")"):
@@ -459,16 +683,26 @@ class _RegexParser:
             raise UnsupportedRegex("backreference")
         if ch in {"A", "Z", "b", "B"}:
             raise UnsupportedRegex(f"anchor escape \\{ch}")
+        if ch.isalpha():
+            raise UnsupportedRegex(f"escape \\{ch}")
         return ch, Re(ch)
 
 
 def _regex_to_z3(pattern: str, *, max_len: int | None, fullmatch: bool) -> Any:
+    from z3 import Concat, Re, Union
+
     if not fullmatch:
         start = pattern.startswith("^") or pattern.startswith("\\A")
         end = pattern.endswith("\\Z") or (pattern.endswith("$") and not pattern.endswith("\\$"))
         if not (start and end):
             raise UnsupportedRegex("re.match pattern is not fully anchored")
-    return _RegexParser(pattern, max_len).parse()
+        if "|" in pattern:
+            raise UnsupportedRegex("re.match alternation anchor scope")
+    regex = _RegexParser(pattern, max_len).parse()
+    # Python's $ can match before one final newline, unlike fullmatch/strict \Z.
+    if not fullmatch and pattern.endswith("$"):
+        return Union(regex, Concat(regex, Re("\n")))
+    return regex
 
 
 def _model_text(validators: list[Validator], max_len: int | None) -> str:
@@ -489,6 +723,9 @@ def _max_len_of(validators: list[Validator]) -> int | None:
 
 
 def _preferred(needle: str, max_len: int | None, has_regex: bool) -> list[str]:
+    if needle == "[^0-9]":
+        return [candidate for candidate in ("1 OR 1=1", "A")
+                if max_len is None or len(candidate) <= max_len]
     ordered = [needle, _PREFERRED_SQLI] if has_regex else [_PREFERRED_SQLI, needle]
     out: list[str] = []
     for cand in ordered:
@@ -503,17 +740,36 @@ def _preferred(needle: str, max_len: int | None, has_regex: bool) -> list[str]:
 
 def _no_claim(
     model: str, needle: str, validators: list[Validator], detail: str,
+    context: str = "unknown", question: str = "",
 ) -> ConstraintResult:
     return ConstraintResult(
         result="unknown", model=model, needle=needle, witness=None,
         validators=tuple(validators), detail=detail, claim=False,
+        context=context, question=question,
     )
 
 
 def _solve(
     regexes: list[Any], max_len: int | None, needle: str, timeout_ms: int, preferred: list[str],
 ) -> tuple[Literal["sat", "unsat", "unknown"], str | None, str]:
-    from z3 import Contains, InRe, Length, Solver, String, StringVal, sat, unsat
+    from z3 import (
+        AllChar,
+        Complement,
+        Concat,
+        Contains,
+        InRe,
+        Intersect,
+        Length,
+        Range,
+        ReSort,
+        Solver,
+        Star,
+        String,
+        StringSort,
+        StringVal,
+        sat,
+        unsat,
+    )
 
     payload = String("payload")
 
@@ -524,7 +780,12 @@ def _solve(
         if max_len is not None:
             solver.add(Length(payload) <= max_len)
             solver.add(Length(payload) >= 0)
-        solver.add(Contains(payload, StringVal(needle)))
+        if needle == "[^0-9]":
+            char = AllChar(ReSort(StringSort()))
+            non_digit = Intersect(char, Complement(Range("0", "9")))
+            solver.add(InRe(payload, Concat(Star(char), non_digit, Star(char))))
+        else:
+            solver.add(Contains(payload, StringVal(needle)))
 
     for cand in preferred:
         solver = Solver()
@@ -553,19 +814,37 @@ def check_validators(
     needle: str = DEFAULT_NEEDLE,
     timeout_ms: int = SOLVER_TIMEOUT_MS,
 ) -> ConstraintResult:
-    """Ask whether ``needle`` can pass every validator on the source→sink path."""
+    """Ask the sink-specific question; unknown context makes no claim.
+
+    ``needle`` remains accepted for caller compatibility; the SQL context chooses
+    the actual question so a numeric sink cannot accidentally ask only about quotes.
+    """
+    context = sink_context(code, source_line, sink_line)["context"]
+    if context == "numeric":
+        needle = "[^0-9]"
+    question = {"string": "admits a quote (string sink)?",
+                "numeric": "admits a non-digit (numeric sink)?"}.get(context, "")
     validators = extract_validators(code, source_line, sink_line, file=file)
     if not validators:
-        return _no_claim("", needle, [], "no validators on the taint path")
+        return _no_claim("", needle, [], "no validators on the taint path", context, question)
     max_len = _max_len_of(validators)
     model = _model_text(validators, max_len)
+    if context == "unknown":
+        return _no_claim(model, needle, validators, "unclassifiable SQL sink context",
+                         context, question)
     try:
         from z3 import Loop, Range, Union
     except ImportError:
-        return _no_claim(model, needle, validators, "z3-solver is not installed")
+        return _no_claim(model, needle, validators, "z3-solver is not installed", context, question)
     regexes: list[Any] = []
     try:
         for validator in validators:
+            if context == "numeric" and (
+                validator.kind == "isdigit" or "\\d" in (validator.pattern or "")
+            ):
+                return _no_claim(model, needle, validators,
+                                 "Unicode digit semantics outside numeric validator model",
+                                 context, question)
             if validator.kind == "regex" and validator.pattern is not None:
                 regexes.append(_regex_to_z3(
                     validator.pattern, max_len=max_len, fullmatch=validator.fullmatch,
@@ -579,19 +858,24 @@ def check_validators(
                 continue
             else:
                 return _no_claim(
-                    model, needle, validators, f"unsupported validator {validator.kind}")
+                    model, needle, validators, f"unsupported validator {validator.kind}",
+                    context, question)
     except UnsupportedRegex as exc:
-        return _no_claim(model, needle, validators, f"unsupported regex: {exc}")
+        return _no_claim(model, needle, validators, f"unsupported regex construct ({exc})",
+                         context, question)
     has_regex = any(v.kind == "regex" for v in validators)
     if not regexes and max_len is None:
-        return _no_claim(model, needle, validators, "no translatable constraints")
+        return _no_claim(model, needle, validators, "no translatable constraints",
+                         context, question)
     try:
         result, witness, detail = _solve(
             regexes, max_len, needle, timeout_ms, _preferred(needle, max_len, has_regex),
         )
     except Exception as exc:
-        return _no_claim(model, needle, validators, f"solver error: {type(exc).__name__}")
+        return _no_claim(model, needle, validators, f"solver error: {type(exc).__name__}",
+                         context, question)
     return ConstraintResult(
         result=result, model=model, needle=needle, witness=witness,
         validators=tuple(validators), detail=detail, claim=result != "unknown",
+        context=context, question=question,
     )

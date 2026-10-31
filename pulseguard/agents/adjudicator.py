@@ -36,7 +36,7 @@ def parse_verdict(
         citations = data.get("cited_evidence")
         if isinstance(citations, list):
             data["cited_evidence"] = [
-                re.sub(r"^\[(E[0-9]+)\](?:\s+.*)?$", r"\1", item)
+                re.sub(r"^\[([A-Z][0-9]+)\](?:\s+.*)?$", r"\1", item)
                 if isinstance(item, str) else item for item in citations
             ]
         score = data["score"]
@@ -52,10 +52,18 @@ def parse_verdict(
 
 
 def uncertain_verdict(model: str, case_id: str, reason: str) -> Verdict:
-    return Verdict(
+    """System substitute when the model reply is unusable. Makes no evidence claim."""
+    verdict = Verdict(
         is_exploitable=False, score=0.5, band="uncertain", model=model, case_id=case_id,
         step4_verdict=reason,
     )
+    verdict._system_fallback = True
+    return verdict
+
+
+def is_system_fallback(verdict: Verdict) -> bool:
+    """True only for :func:`uncertain_verdict` substitutes, never inferred from fields."""
+    return bool(getattr(verdict, "_system_fallback", False))
 
 
 def adjudicate(

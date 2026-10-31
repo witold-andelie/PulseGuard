@@ -34,6 +34,7 @@ class SecOpsState(TypedDict, total=False):
     guard_flags: list[str]           # guard pattern names that matched
     evidence: list[dict[str, Any]]   # EvidenceItem dumps (E1..E3)
     evidence_block: str              # rendered Hard Evidence Block
+    analysis_limits: list[dict[str, Any]]  # L-ids, never citable evidence
 
     verdict: dict[str, Any]          # Verdict payload (adjudicator)
     band: str                        # confirmed | uncertain | false_positive | abstained

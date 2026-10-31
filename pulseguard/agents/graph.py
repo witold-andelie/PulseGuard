@@ -22,17 +22,18 @@ from langgraph.types import interrupt
 
 from pulseguard import guard as guard_mod
 from pulseguard.agents.adjudicator import adjudicate as model_adjudicate
-from pulseguard.agents.adjudicator import uncertain_verdict
+from pulseguard.agents.adjudicator import is_system_fallback, uncertain_verdict
 from pulseguard.agents.bands import BAND_ACTIVITY, DEFAULT_BANDS, Bands
 from pulseguard.agents.llm import LLMClient
 from pulseguard.agents.remediator import propose_patch, validate_patch_scope
 from pulseguard.agents.skeptic import abstained_verdict, challenge, resolution
 from pulseguard.agents.state import SecOpsState
-from pulseguard.contracts.models import Finding
+from pulseguard.contracts.models import EvidenceItem, Finding
 from pulseguard.contracts.validate import assert_payload
-from pulseguard.evidence import CODE_HEADER, build_hard_evidence, render_block
+from pulseguard.evidence import build_hard_evidence, render_block
 from pulseguard.falsify.counterfactual import consistent
 from pulseguard.falsify.poc import witness
+from pulseguard.falsify.z3_check import check_validator_dominance
 from pulseguard.governance.approval import Approval, make_request, record_decision
 from pulseguard.governance.policy import decide as policy_decide
 from pulseguard.patching.bump import deterministic_bump
@@ -48,7 +49,7 @@ from pulseguard.patching.sandbox import SandboxVerifier, Scanner
 from pulseguard.paths import REPO_ROOT
 from pulseguard.risk.blast_radius import exposure_text, is_dependency, score_finding
 from pulseguard.scanners.semgrep import DataflowTrace, TraceLine
-from pulseguard.verify import verify_finding
+from pulseguard.verify import check_cited_evidence, verify_finding
 
 MAX_ATTEMPTS = 3
 NodeFn = Callable[[SecOpsState], dict[str, Any]]
@@ -106,6 +107,13 @@ def _is_dependency(state: SecOpsState) -> bool:
     return is_dependency(state["finding"])
 
 
+def _witnessed_e5(item: dict[str, Any], case_id: str) -> bool:
+    payload = item.get("payload") or {}
+    return (item.get("evidence_id") == "E5" and item.get("kind") == "poc"
+            and item.get("claim") is not False and payload.get("claim") is not False
+            and payload.get("status") == "witnessed" and payload.get("case_id") == case_id)
+
+
 def build_graph(deps: GraphDeps | None = None) -> StateGraph:
     """Return an uncompiled graph; the runner supplies durable SQLite checkpoints."""
     deps = deps or GraphDeps()
@@ -152,35 +160,70 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         code = _code(state)
         exposure = exposure_text(state["finding"], code or None)
         # code= lets evidence add E6 (z3 validator proof) before adjudication.
+        limits: list[dict[str, Any]] = []
         items = build_hard_evidence(finding, _trace_from_steps(steps), exposure=exposure,
-                                    code=code or None)
+                                    code=code or None, analysis_limits=limits)
+        # Retain only an already available, case-bound deterministic bypass witness.
+        items += [EvidenceItem.model_validate(item) for item in state.get("evidence", [])
+                  if _witnessed_e5(item, finding.case_id)]
         ids = [item.evidence_id for item in items]
         return {
             "finding": dict(state["finding"], evidence_ids=ids),
             "evidence": [item.model_dump() for item in items],
+            "analysis_limits": limits,
             "evidence_block": render_block(
                 items, code or None,
                 sink_line=next((s["line"] for s in steps if s["kind"] == "sink"), finding.line),
+                analysis_limits=limits,
             ),
             "events": [_ev(state, "EVIDENCE_BUILT", "evidence", evidence_ids=ids)],
         }
 
     def adjudicate(state: SecOpsState) -> dict[str, Any]:
         metadata: dict[str, Any] = {}
+        fallback = False
         try:
             if deps.adjudicate:
                 verdict = dict(deps.adjudicate(state))
             else:
-                verdict = model_adjudicate(
+                verdict_obj = model_adjudicate(
                     Finding.model_validate(state["finding"]), state["evidence_block"],
                     llm=deps.llm, metadata=metadata,
-                ).to_payload()
+                )
+                fallback = is_system_fallback(verdict_obj)
+                verdict = verdict_obj.to_payload()
             verdict["band"] = deps.bands.band_for(verdict["score"])
             assert_payload("verdict", verdict)
         except Exception:
+            fallback = True
             verdict = uncertain_verdict("unknown", state["case_id"],
                                         "Unusable model result; human review.").to_payload()
+        # Citation gate judges model claims. A system fallback makes none.
+        if fallback:
+            return {
+                "verdict": dict(verdict, band="uncertain"), "band": "uncertain",
+                "verdict_metadata": metadata,
+                "model_calls": [{"role": "adjudicator", **metadata}] if metadata else [],
+                "finding": dict(state["finding"], state="escalated"),
+                "review_status": "human_review",
+                "review_reason": "Unusable model result; human review.",
+                "events": [_ev(state, BAND_ACTIVITY["uncertain"], "adjudicator",
+                               score=verdict.get("score"),
+                               cited_evidence=verdict.get("cited_evidence", []))],
+            }
         band = verdict["band"]
+        citation = check_cited_evidence(verdict.get("cited_evidence") or [], state["evidence"])
+        if not citation["ok"]:
+            return {
+                "verdict": dict(verdict, band="abstained"), "band": "abstained",
+                "verdict_metadata": metadata,
+                "model_calls": [{"role": "adjudicator", **metadata}] if metadata else [],
+                "finding": dict(state["finding"], state="escalated"),
+                "verification": {"ok": False, "checks": [citation]}, "verified": False,
+                "review_status": "human_review", "review_reason": citation["detail"],
+                "events": [_ev(state, "ABSTAINED_ESCALATED", "verifier",
+                               reason=citation["detail"], check="cited_evidence")],
+            }
         status = {"confirmed": "remediating", "uncertain": "human_review",
                   "false_positive": "dropped"}[band]
         return {
@@ -229,6 +272,10 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
             patchset=state.get("patchset") or None,
         )
         skeptic = state.get("skeptic")
+        if skeptic:
+            report["checks"].append(check_cited_evidence(
+                skeptic.get("cited_evidence") or [], state["evidence"]))
+            report["ok"] = all(check["ok"] for check in report["checks"])
         outcome = resolution(
             state["band"], None if skeptic is None else skeptic.get("band"), report["ok"])
         events = []
@@ -237,14 +284,40 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
             reason = "verification failed" if not report["ok"] else (
                 "adjudicator and skeptic did not resolve outside 0.3-0.7")
             update.update(
+                band="abstained", verdict=dict(state["verdict"], band="abstained"),
                 finding=dict(state["finding"], state="escalated"),
                 review_status="human_review", review_reason=reason,
                 events=[_ev(state, "ABSTAINED_ESCALATED", "verifier", reason=reason,
                             score=state["verdict"].get("score"))],
             )
             return update
+        z3_veto = "not_applicable"
+        proof = next((item for item in state["evidence"]
+                      if item["evidence_id"] == "E6"
+                      and item.get("payload", {}).get("claim") is True
+                      and item["payload"].get("result") == "unsat"), None)
+        if proof and state["verdict"]["score"] >= deps.bands.confirmed_at:
+            steps = state.get("trace") or state["finding"].get("trace") or []
+            source = next((s["line"] for s in steps if s["kind"] == "source"),
+                          state["finding"]["line"])
+            sink = next((s["line"] for s in steps if s["kind"] == "sink"),
+                        state["finding"]["line"])
+            dominance = check_validator_dominance(_code(state), source_line=source, sink_line=sink)
+            bypass = any(_witnessed_e5(item, state["case_id"]) for item in state["evidence"])
+            if dominance["dominates"] and not bypass:
+                reason = "contradicts symbolic evidence E6"
+                update.update(
+                    band="abstained", verdict=dict(state["verdict"], band="abstained"),
+                    finding=dict(state["finding"], state="escalated"), verified=False,
+                    review_status="human_review", review_reason=reason,
+                    events=[_ev(state, "ABSTAINED_ESCALATED", "verifier",
+                                reason=reason, check="z3_veto")],
+                )
+                return update
+            if dominance["dominates"]:
+                z3_veto = "passed"
         events.append(_ev(state, "VERIFIED", "verifier", ok=True,
-                          score=state["verdict"].get("score")))
+                          score=state["verdict"].get("score"), z3_veto=z3_veto))
         if outcome == "false_positive":
             update.update(
                 finding=dict(state["finding"], state="false_positive"),
@@ -428,11 +501,15 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         item = {"evidence_id": "E5", "kind": "poc", "text": result["detail"], "payload": result}
         items = [it for it in state["evidence"] if it["evidence_id"] != "E5"] + [item]
         finding = dict(state["finding"], evidence_ids=[it["evidence_id"] for it in items])
-        events = [_ev(state, "VERIFIED", "poc", check="poc_witness", **result)]
+        events = [_ev(state, "VERIFIED", "poc", check="poc_witness",
+                      z3_veto="not_applicable", **result)]
         update: dict[str, Any] = {
             "poc": result, "evidence": items, "finding": finding,
-            "evidence_block": state["evidence_block"].replace(
-                CODE_HEADER, f"[E5] {result['detail']}\n{CODE_HEADER}", 1),
+            "evidence_block": render_block(
+                [EvidenceItem.model_validate(item) for item in items], _code(state) or None,
+                sink_line=state["finding"]["line"],
+                analysis_limits=state.get("analysis_limits"),
+            ),
             "model_calls": [{"role": "poc", **metadata}] if metadata else [],
             "events": events,
         }
@@ -526,7 +603,11 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         }
 
     def after_adjudicate(state: SecOpsState) -> str:
+        if state["band"] == "abstained":
+            return END
         if state["band"] == "false_positive":
+            return END
+        if state["finding"]["state"] == "escalated":
             return END
         if state["band"] == "uncertain":
             return "skeptic"
@@ -600,9 +681,10 @@ def _patched_block(state: SecOpsState, root: Path) -> str:
         PatchApplier(work).apply(patchset)
         code = (work / finding.file).read_text(encoding="utf-8")
         steps = state.get("trace") or [s.model_dump() for s in finding.trace]
+        limits: list[dict[str, Any]] = []
         items = build_hard_evidence(
             finding, _trace_from_steps(steps),
-            exposure=exposure_text(state["finding"], code), code=code,
+            exposure=exposure_text(state["finding"], code), code=code, analysis_limits=limits,
         )
         sink = next((s["line"] for s in steps if s["kind"] == "sink"), finding.line)
-        return render_block(items, code, sink_line=sink)
+        return render_block(items, code, sink_line=sink, analysis_limits=limits)

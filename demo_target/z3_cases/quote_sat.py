@@ -12,4 +12,4 @@ def quote_class_lookup():
     order_id = request.args.get("id", "")
     if not re.fullmatch(r"^[A-Za-z0-9_\-' ]{1,32}$", order_id):
         return None
-    return order_id
+    return "SELECT id FROM orders WHERE id = '" + order_id + "'"

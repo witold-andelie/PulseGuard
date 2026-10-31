@@ -115,13 +115,16 @@ def triage_finding(finding_json: str) -> dict[str, Any]:
     guard_result = guard_mod.screen(screened)
     if guard_result.flagged:
         code = guard_mod.strip_flagged_lines(code)
-    items = build_hard_evidence(finding, _trace_of(finding), code=code or None)
+    limits: list[dict[str, Any]] = []
+    items = build_hard_evidence(finding, _trace_of(finding), code=code or None,
+                                analysis_limits=limits)
     sink = next((step.line for step in finding.trace if step.kind == "sink"), finding.line)
-    block = render_block(items, code or None, sink_line=sink)
+    block = render_block(items, code or None, sink_line=sink, analysis_limits=limits)
     result: dict[str, Any] = {
         "guard_flagged": guard_result.flagged,
         "guard_patterns": guard_result.patterns,
         "evidence": [item.model_dump() for item in items],
+        "analysis_limits": limits,
         "evidence_block": block,
         "model_configured": False,
         "verdict": None,
@@ -158,6 +161,7 @@ def get_case_evidence(case_id: str) -> dict[str, Any]:
     return {
         "case_id": case_id,
         "evidence": store.list_evidence(case_id),
+        "analysis_limits": runtime.get("analysis_limits") or [],
         "verdicts": store.list_verdicts(case_id),
         "verification": runtime.get("verification"),
         "blast_radius": runtime.get("blast_radius"),

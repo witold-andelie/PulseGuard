@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from pulseguard.ingest import finding_from_trivy
 from pulseguard.scanners.trivy import TrivyReportLoader
 from pulseguard.verify import (
@@ -23,6 +25,15 @@ def test_cited_evidence_pass_and_fail():
     assert check_cited_evidence(["E1"], evidence)["ok"]
     assert not check_cited_evidence(["E9"], evidence)["ok"]
     assert not check_cited_evidence([], evidence)["ok"]
+
+
+@pytest.mark.parametrize(("eid", "payload"), [
+    ("L1", {}), ("E6", {"claim": False}), ("E6", {"result": "unknown"}),
+    ("E6", {"solver_status": "unknown"}),
+])
+def test_present_but_non_claim_evidence_cannot_be_cited(eid, payload):
+    evidence = [{"evidence_id": eid, "kind": "constraint", "payload": payload}]
+    assert not check_cited_evidence([eid], evidence)["ok"]
 
 
 def test_cited_location_pass_and_fail(tmp_path):

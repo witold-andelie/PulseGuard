@@ -12,4 +12,4 @@ def lookahead_lookup():
     order_id = request.args.get("id", "")
     if not re.fullmatch(r"^(?=.*[A-Z])[A-Za-z0-9]{1,12}$", order_id):
         return None
-    return order_id
+    return "SELECT id FROM orders WHERE id = '" + order_id + "'"

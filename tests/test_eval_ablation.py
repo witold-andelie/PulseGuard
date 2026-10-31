@@ -259,3 +259,4 @@ def test_real_semgrep_ablation_respects_cast_and_parameterised_cases() -> None:
     for name in ("integer_text", "integer_format", "bound_name", "bound_item", "order_by_number"):
         assert next(s.site_id for s in sites if s.function == name) not in flags
     assert sum(row["metrics"][k] for k in ("tp", "fp", "fn", "tn")) == len(sites)
+    assert tuple(row["metrics"][k] for k in ("tp", "fp", "fn", "tn")) == (11, 4, 3, 9)

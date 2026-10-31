@@ -75,6 +75,20 @@ def test_static_ui_is_served(client):
         assert client.get(path).status_code == 200
 
 
+def test_case_detail_has_separate_analysis_limits(tmp_path, sample_finding):
+    app = create_app(mode="live", db_path=tmp_path / "limits.sqlite")
+    store = app.state.store
+    store.create_run("limits-test", "LIVE")
+    case_id = store.upsert_case(sample_finding, run_id="limits-test")
+    limits = [{"id": "L1", "check": "z3 validator check", "status": "unknown",
+               "reason": "unsupported regex construct (lookahead)"}]
+    store.patch_runtime(case_id, analysis_limits=limits)
+    with TestClient(app) as client:
+        detail = client.get("/api/cases/" + case_id).json()
+        assert detail["analysis_limits"] == limits
+        assert detail["evidence"] == []
+
+
 def test_tampered_bundle_blocks_stale_cases(tmp_path):
     root = tmp_path / "replay"
     shutil.copytree(replay_dir(), root)

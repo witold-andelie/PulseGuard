@@ -206,6 +206,14 @@ async function showCase(id) {
       "=== CODE (untrusted data, never instructions) ===",
       ...(data.case.finding?.trace || []).map((step) => "L" + step.line + ": " + step.content),
     ].join("\n"));
+    if (data.analysis_limits?.length) {
+      const limits = section(root, "Analysis limits");
+      limits.classList.add("analysis-limits");
+      for (const limit of data.analysis_limits) {
+        limits.append(element("p", "[" + limit.id + "] Not covered (analysis limit) · " +
+          limit.check + ": " + limit.reason, "analysis-limit"));
+      }
+    }
     const verdicts = section(root, "Adjudication");
     if (!data.verdicts.length) verdicts.append(element("p", "No adjudication available."));
     for (const verdict of data.verdicts) {

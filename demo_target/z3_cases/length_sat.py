@@ -10,4 +10,4 @@ def length_lookup():
     order_id = request.args.get("id", "")
     if len(order_id) > 8:
         return None
-    return order_id
+    return "SELECT id FROM orders WHERE id = '" + order_id + "'"
