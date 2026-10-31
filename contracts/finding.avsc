@@ -1,0 +1,27 @@
+{
+  "type": "record",
+  "name": "Finding",
+  "namespace": "pulseguard.security",
+  "doc": "Finding JSON contract on the wire. Validate JSON Schema constraints before encoding. Optional absent fields use null; the pulseguard.fields Kafka header preserves presence. extra is a JSON-encoded object because Avro has no arbitrary JSON type.",
+  "fields": [
+    {"name": "case_id", "type": "string"},
+    {"name": "fingerprint", "type": "string"},
+    {"name": "rule_id", "type": "string"},
+    {"name": "scanner", "type": ["null", {"type": "enum", "name": "Scanner", "symbols": ["semgrep", "trivy", "bandit"]}], "default": null},
+    {"name": "severity", "type": ["null", {"type": "enum", "name": "Severity", "symbols": ["info", "low", "medium", "high", "critical"]}], "default": null},
+    {"name": "message", "type": ["null", "string"], "default": null},
+    {"name": "file", "type": "string"},
+    {"name": "line", "type": "long"},
+    {"name": "state", "type": {"type": "enum", "name": "FindingState", "symbols": ["raw", "normalized", "quarantined", "confirmed", "uncertain", "false_positive", "remediated", "escalated"]}},
+    {"name": "evidence_ids", "type": {"type": "array", "items": "string"}},
+    {"name": "trace", "type": ["null", {"type": "array", "items": {
+      "type": "record", "name": "TraceStep", "fields": [
+        {"name": "kind", "type": {"type": "enum", "name": "TraceKind", "symbols": ["source", "intermediate", "sink"]}},
+        {"name": "line", "type": "long"},
+        {"name": "content", "type": "string"}
+      ]
+    }}], "default": null},
+    {"name": "cve_id", "type": ["null", "string"], "default": null},
+    {"name": "extra", "type": ["null", "string"], "default": null}
+  ]
+}
