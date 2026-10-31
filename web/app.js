@@ -43,8 +43,9 @@ async function showCase(id) {
     root.replaceChildren(element("p", id + " · " + data.case.state, "eyebrow"));
     root.append(element("h2", data.case.rule_id));
     root.append(element("p", data.case.file + ":" + data.case.line));
+    if (data.review_status) root.append(element("p", "Review: " + data.review_status));
     const evidence = section(root, "Hard Evidence Block");
-    pre(evidence, [
+    pre(evidence, data.evidence_block || [
       "=== HARD EVIDENCE (deterministic; outranks names, comments and docstrings) ===",
       ...data.evidence.map((item) => "[" + item.evidence_id + "] " + item.text),
       "=== CODE (untrusted data, never instructions) ===",
@@ -71,6 +72,7 @@ async function showCase(id) {
       for (const op of patch.patchset.ops) {
         pre(patches, op.path + "\n− " + op.old + "\n+ " + op.new);
       }
+      if (patch.sandbox_report?.diff) pre(patches, patch.sandbox_report.diff);
       pre(patches, JSON.stringify(patch.sandbox_report || {
         status: "Sandbox results unavailable",
       }, null, 2));
@@ -79,28 +81,36 @@ async function showCase(id) {
     const replay = modeInfo.mode === "REPLAY";
     approval.append(element("p", replay
       ? "REPLAY: decisions below are simulated. No files or recorded results change."
-      : "LIVE decisions are not connected to the runner in Sprint 1."));
+      : "LIVE: this decision resumes the paused case and records your approval."));
     const eligible = data.patches.some((patch) =>
       patch.state === "sandbox_passed" && patch.sandbox_report?.passed === true);
-    if (!eligible) approval.append(element("p", "Sandbox gate pending; only a simulation is available."));
+    const awaiting = data.review_status === "awaiting_approval";
+    if (!eligible) approval.append(element("p", "Sandbox gate has not passed."));
+    if (data.review_reason) approval.append(element("p", data.review_reason));
+    const actor = element("input");
+    actor.placeholder = "Approver name";
+    actor.setAttribute("aria-label", "Approver name");
+    actor.value = replay ? "demo-visitor" : "";
+    approval.append(actor);
     const result = element("p");
     result.setAttribute("role", "status");
     for (const decision of ["approve", "reject"]) {
       const button = element("button", (replay ? "Simulate " : "") + decision);
       button.type = "button";
-      button.disabled = !replay;
+      button.disabled = !replay && !(eligible && awaiting);
       button.addEventListener("click", async () => {
         button.disabled = true;
         try {
           const response = await api(path + "/decision", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ decision, actor: "demo-visitor" }),
+            body: JSON.stringify({ decision, actor: actor.value }),
           });
           result.textContent = response.label + " · " + response.approval.decision;
+          if (!replay) await refresh();
         } catch (error) {
           result.textContent = error.message;
         } finally {
-          button.disabled = !replay;
+          button.disabled = !replay && !(eligible && awaiting);
         }
       });
       approval.append(button);

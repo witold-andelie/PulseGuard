@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from pulseguard.api import create_app
 from pulseguard.paths import replay_dir
+from pulseguard.replay.store import RunStore
 
 
 @pytest.fixture
@@ -21,8 +22,9 @@ def test_health_and_default_mode(client):
     assert response.json()["replay_verified"] is True
     mode = client.get("/api/mode").json()
     assert mode["mode"] == "REPLAY"
-    assert mode["recorded"] is False
-    assert "PLACEHOLDER" in mode["label"]
+    latest = RunStore(replay_dir()).latest()
+    assert mode["recorded"] is bool(latest.get("recorded"))
+    assert mode["label"] == latest["label"]
     assert len(mode["manifest_sha256"]) == 64
 
 

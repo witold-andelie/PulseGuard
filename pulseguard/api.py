@@ -22,6 +22,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from pulseguard import __version__
+from pulseguard.agents.graph import GraphDeps
+from pulseguard.agents.runner import CaseNotAwaitingApproval, resume_case
 from pulseguard.contracts.validate import assert_payload
 from pulseguard.governance.approval import ApprovalError, record_decision
 from pulseguard.paths import default_db_path, replay_dir, web_dir
@@ -80,6 +82,7 @@ def seed_from_replay(store: Store, run: dict[str, Any], manifest_sha256: str | N
                                a.get("policy_tier", "manual"), created_at=a.get("created_at"))
         for e in case.get("events", []):
             store.add_event(e)
+        store.set_replay_context(case_id, case)
     return run_id
 
 
@@ -89,6 +92,7 @@ def create_app(
     db_path: str | Path | None = None,
     replay_root: str | Path | None = None,
     web_root: str | Path | None = None,
+    live_deps: GraphDeps | None = None,
 ) -> FastAPI:
     mode = resolve_mode(mode)
     app = FastAPI(title="PulseGuard", version=__version__)
@@ -118,7 +122,7 @@ def create_app(
                 f"hash mismatch: mismatched={result.mismatched} missing={result.missing} "
                 f"unlisted={result.unlisted}")
     else:
-        info["label"] = "LIVE (local). LIVE runs are not exposed through the API in Sprint 1."
+        info["label"] = "LIVE (local). Start scans with python -m pulseguard.run."
 
     app.state.store = store
     app.state.info = info
@@ -134,7 +138,11 @@ def create_app(
 
     @app.get("/api/mode")
     def api_mode() -> dict[str, Any]:
-        return dict(info)
+        current = dict(info)
+        if mode == "live":
+            runs = [run for run in store.list_runs() if run["mode"] == "LIVE"]
+            current["run_id"] = runs[-1]["run_id"] if runs else None
+        return current
 
     def require_ready() -> None:
         if info["replay_error"]:
@@ -146,7 +154,7 @@ def create_app(
         cases = store.list_cases(state, mode=info["mode"])
         for c in cases:
             c.pop("finding", None)
-        return {"mode": info["mode"], "run_id": info["run_id"], "cases": cases}
+        return {"mode": info["mode"], "run_id": api_mode()["run_id"], "cases": cases}
 
     def _case_or_404(case_id: str) -> dict[str, Any]:
         require_ready()
@@ -159,6 +167,7 @@ def create_app(
     @app.get("/api/cases/{case_id}")
     def get_case(case_id: str) -> dict[str, Any]:
         case = _case_or_404(case_id)
+        runtime = store.get_runtime(case_id) or {}
         return {
             "mode": info["mode"],
             "case": case,
@@ -166,6 +175,10 @@ def create_app(
             "verdicts": store.list_verdicts(case_id),
             "patches": store.list_patches(case_id),
             "approvals": store.list_approvals(case_id),
+            "evidence_block": runtime.get("evidence_block"),
+            "review_status": runtime.get("review_status"),
+            "review_reason": runtime.get("review_reason"),
+            "bundle": runtime.get("bundle"),
         }
 
     @app.get("/api/cases/{case_id}/trace", response_model=None)
@@ -178,7 +191,7 @@ def create_app(
         return {"case_id": case_id, "mode": info["mode"], "events": events}
 
     @app.post("/api/cases/{case_id}/decision")
-    def post_decision(case_id: str, body: DecisionIn) -> dict[str, Any]:
+    async def post_decision(case_id: str, body: DecisionIn) -> dict[str, Any]:
         _case_or_404(case_id)
         try:
             approval = record_decision(case_id, body.decision, body.actor, mode=mode,
@@ -190,8 +203,15 @@ def create_app(
             return {"simulated": True,
                     "label": "REPLAY - simulated decision; nothing was applied or stored",
                     "approval": approval.to_dict()}
-        raise HTTPException(status_code=501,
-                            detail="LIVE decisions are wired to the runner in a later sprint")
+        try:
+            status = await resume_case(case_id, body.decision, body.actor,
+                                       live_deps, store.db_path, comment=body.comment)
+        except CaseNotAwaitingApproval as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"simulated": False, "label": "LIVE decision recorded",
+                "approval": status["values"]["approval"],
+                "awaiting_approval": status["awaiting_approval"],
+                "bundle": status["values"].get("bundle")}
 
     @app.exception_handler(ValueError)
     async def _value_error(_: Request, exc: ValueError) -> JSONResponse:

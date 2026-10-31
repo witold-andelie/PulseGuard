@@ -10,7 +10,10 @@ built here.
 
 from __future__ import annotations
 
+import ast
+import io
 import re
+import tokenize
 from collections.abc import Iterable
 
 from pulseguard.contracts.models import EvidenceItem, Finding
@@ -114,10 +117,57 @@ def build_hard_evidence(finding: Finding, trace: DataflowTrace | None) -> list[E
     return items
 
 
-def render_block(items: list[EvidenceItem], code: str | None = None) -> str:
+def code_excerpt(code: str, sink_line: int) -> str:
+    """Number the sink's enclosing function, hiding SymbAI-Taint eval annotations."""
+    lines = code.splitlines()
+    if not lines:
+        return "..."
+    sink_line = max(1, min(sink_line, len(lines)))
+    start, end = max(1, sink_line - 25), min(len(lines), sink_line + 25)
+    hidden: set[int] = set()
+    try:
+        tree = ast.parse(code)
+        if tree.body and isinstance(tree.body[0], ast.Expr):
+            first = tree.body[0]
+            if isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                hidden.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+        functions = [node for node in ast.walk(tree)
+                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                     and node.lineno <= sink_line <= (node.end_lineno or node.lineno)]
+        if functions:
+            node = min(functions, key=lambda fn: (fn.end_lineno or fn.lineno) - fn.lineno)
+            start = min([node.lineno, *(d.lineno for d in node.decorator_list)])
+            end = node.end_lineno or node.lineno
+    except SyntaxError:
+        pass
+
+    first_statement = True
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(code).readline):
+            if token.type == tokenize.COMMENT:
+                row, column = token.start
+                comment = re.sub(r"#\s*@vuln\b.*", "", token.string)
+                lines[row - 1] = (lines[row - 1][:column] + comment).rstrip()
+            elif token.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.ENCODING,
+                                    tokenize.ENDMARKER):
+                if first_statement and token.type == tokenize.STRING:
+                    hidden.update(range(token.start[0], token.end[0] + 1))
+                first_statement = False
+    except (tokenize.TokenError, IndentationError):
+        pass
+    return "\n".join(f"{number}: {lines[number - 1]}" for number in range(start, end + 1)
+                     if number not in hidden)
+
+
+def render_block(
+    items: list[EvidenceItem], code: str | None = None, *, sink_line: int | None = None,
+) -> str:
     """Render the Hard Evidence Block text exactly in the section 4.2 layout."""
     lines = [HEADER]
     lines += [f"[{it.evidence_id}] {it.text}" for it in items]
     lines.append(CODE_HEADER)
-    lines.append(code if code is not None else "...")
+    if sink_line is None:
+        sink_line = next((step["line"] for item in items for step in item.payload.get("steps", [])
+                          if step["kind"] == "sink"), 1)
+    lines.append(code_excerpt(code, sink_line or 1) if code is not None else "...")
     return "\n".join(lines)

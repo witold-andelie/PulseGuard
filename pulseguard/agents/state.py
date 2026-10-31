@@ -22,6 +22,10 @@ class SecOpsState(TypedDict, total=False):
     run_id: str
     mode: RunMode
     case_id: str
+    target_root: str
+    output_dir: str
+    review_status: str               # human_review | awaiting_approval | dropped | closed
+    review_reason: str
 
     finding: dict[str, Any]          # Finding payload (state updated in place by nodes)
     code: str                        # code excerpt shown to the model (guard-stripped)
@@ -33,11 +37,15 @@ class SecOpsState(TypedDict, total=False):
 
     verdict: dict[str, Any]          # Verdict payload
     band: str                        # confirmed | uncertain | false_positive
+    verdict_metadata: dict[str, Any]
 
     patchset: dict[str, Any]         # PatchSet payload (latest attempt)
     attempt: int                     # remediation attempt counter, max 3
     sandbox_report: dict[str, Any]
     sandbox_feedback: str            # fed back to the Remediator on sandbox failure
+    patch_error: str
+    patch_metadata: dict[str, Any]
+    model_calls: Annotated[list[dict[str, Any]], operator.add]
 
     approval: dict[str, Any]         # Approval decision payload
     bundle: dict[str, Any]           # Remediation Bundle (patch + PR description)

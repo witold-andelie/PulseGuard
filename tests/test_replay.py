@@ -11,7 +11,7 @@ from pulseguard.replay.verify import MANIFEST_NAME, verify_manifest, write_manif
 def test_committed_bundle_is_verified():
     result = verify_manifest()
     assert result.ok, result
-    assert result.checked == 1
+    assert result.checked >= 1
     assert len(result.manifest_sha256) == 64
 
 

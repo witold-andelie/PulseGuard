@@ -232,9 +232,11 @@ class SemgrepRunner:
             raise SemgrepError(f"semgrep timed out after {self.timeout}s") from exc
         # 0 = no findings, 1 = findings (with --error); anything else is a failure.
         if proc.returncode not in (0, 1):
+            detail = proc.stderr.decode('utf-8', 'replace')
+            if len(detail) > 2000:
+                detail = detail[:1000] + "\n...\n" + detail[-1000:]
             raise SemgrepError(
-                f"semgrep exited {proc.returncode}: "
-                f"{proc.stderr.decode('utf-8', 'replace')[-2000:]}"
+                f"semgrep exited {proc.returncode}: {detail}"
             )
         return proc.stdout.decode("utf-8", "replace")
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pulseguard"
 version = "0.1.0"
-description = "Governed neuro-symbolic multi-agent security operations (Sprint 1 skeleton)."
+description = "Governed neuro-symbolic multi-agent security operations (Sprint 1)."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary - hackathon submission" }
@@ -33,6 +33,7 @@ pulseguard = ["rules/semgrep/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "demo_target/order_api/tests"]
+markers = ["semgrep: integration tests requiring a working local Semgrep CLI"]
 
 [tool.ruff]
 line-length = 100

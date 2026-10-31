@@ -84,6 +84,10 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_cases_state ON cases(state);
 CREATE INDEX IF NOT EXISTS idx_events_case ON events(case_id, seq);
+CREATE TABLE IF NOT EXISTS runtime_state (
+    case_id TEXT PRIMARY KEY REFERENCES cases(case_id),
+    state_json TEXT NOT NULL
+);
 """
 
 STEP_KEYS = ("step1_dataflow", "step2_constraint", "step3_context", "step4_verdict")
@@ -131,8 +135,8 @@ class Store:
     def reset(self) -> None:
         """Delete all PulseGuard rows (used when re-seeding from the replay bundle)."""
         with self.connect() as conn:
-            for table in ("approvals", "patches", "verdicts", "evidence", "events", "cases",
-                          "runs"):
+            for table in ("runtime_state", "approvals", "patches", "verdicts", "evidence", "events",
+                          "cases", "runs"):
                 conn.execute(f"DELETE FROM {table}")  # noqa: S608 - fixed table names
             conn.execute("DELETE FROM sqlite_sequence WHERE name = 'events'")
 
@@ -270,6 +274,92 @@ class Store:
             d["steps"] = json.loads(d.pop("steps_json"))
             out.append(d)
         return out
+
+    def get_runtime(self, case_id: str) -> dict[str, Any] | None:
+        """Latest materialised graph state, available without model configuration."""
+        with self.connect() as conn:
+            row = conn.execute("SELECT state_json FROM runtime_state WHERE case_id = ?",
+                               (case_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def set_replay_context(self, case_id: str, case: dict[str, Any]) -> None:
+        """Retain the recorded code/evidence block and bundle for REPLAY detail views."""
+        context = {key: case[key] for key in ("evidence_block", "bundle") if key in case}
+        if context:
+            with self.connect() as conn:
+                conn.execute("INSERT OR REPLACE INTO runtime_state VALUES (?, ?)",
+                             (case_id, json.dumps(context)))
+
+    def sync_runtime(self, state: dict[str, Any]) -> list[dict[str, Any]]:
+        """Atomically project a checkpoint into all S1 tables; return newly written events.
+
+        Stable artifact ids and event offsets make checkpoint projection safe to repeat.
+        """
+        finding = state["finding"]
+        case_id = finding["case_id"]
+        assert_payload("finding", finding)
+        with self.connect() as conn:
+            row = conn.execute("SELECT state_json FROM runtime_state WHERE case_id = ?",
+                               (case_id,)).fetchone()
+            previous = json.loads(row[0]) if row else {}
+            conn.execute(
+                "UPDATE cases SET finding_json = ?, state = ?, closed_at = "
+                "CASE WHEN ? THEN COALESCE(closed_at, ?) ELSE closed_at END WHERE case_id = ?",
+                (json.dumps(finding), finding["state"],
+                 state.get("review_status") in ("closed", "dropped"), _now(), case_id))
+            for item in state.get("evidence", []):
+                conn.execute("INSERT OR REPLACE INTO evidence VALUES (?, ?, ?, ?)",
+                             (item["evidence_id"], case_id, item["kind"],
+                              json.dumps({"text": item["text"], **item.get("payload", {})})))
+            self._sync_verdict(conn, case_id, state)
+            self._sync_patch(conn, case_id, state)
+            added = []
+            for event in state.get("events", [])[len(previous.get("events", [])):]:
+                event = {**event, "attributes": redact(event.get("attributes", {}))}
+                assert_payload("event", {"seq": 0, **event})
+                cursor = conn.execute(
+                    "INSERT INTO events (case_id, activity, ts, resource, attributes_json) "
+                    "VALUES (?, ?, ?, ?, ?)", (case_id, event["activity"], event["ts"],
+                                               event["resource"], json.dumps(event["attributes"])))
+                added.append({"seq": cursor.lastrowid, **event})
+            conn.execute("INSERT OR REPLACE INTO runtime_state VALUES (?, ?)",
+                         (case_id, json.dumps(state)))
+        return added
+
+    @staticmethod
+    def _sync_verdict(conn: sqlite3.Connection, case_id: str, state: dict[str, Any]) -> None:
+        verdict = state.get("verdict")
+        if not verdict:
+            return
+        assert_payload("verdict", verdict)
+        steps = {key: verdict[key] for key in STEP_KEYS}
+        steps.update(is_exploitable=verdict["is_exploitable"],
+                     model_metadata=state.get("verdict_metadata", {}))
+        conn.execute("INSERT INTO verdicts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                     "ON CONFLICT(verdict_id) DO UPDATE SET steps_json=excluded.steps_json",
+                     (f"V-{case_id}", case_id, verdict["role"], verdict["score"], verdict["band"],
+                      json.dumps(verdict["cited_evidence"]), json.dumps(steps),
+                      verdict["model"], _now()))
+
+    @staticmethod
+    def _sync_patch(conn: sqlite3.Connection, case_id: str, state: dict[str, Any]) -> None:
+        patch = state.get("patchset")
+        if not patch:
+            return
+        assert_payload("patchset", patch)
+        patch_id = f"P-{case_id}-{patch['attempt']}"
+        report = state.get("sandbox_report") if patch.get("state") != "proposed" else None
+        conn.execute("INSERT INTO patches VALUES (?, ?, ?, ?, ?, ?) "
+                     "ON CONFLICT(patch_id) DO UPDATE SET state=excluded.state, "
+                     "patchset_json=excluded.patchset_json, "
+                     "sandbox_report_json=excluded.sandbox_report_json",
+                     (patch_id, case_id, patch["attempt"], patch["state"],
+                      json.dumps(patch), json.dumps(report) if report else None))
+        approval = state.get("approval")
+        if approval:
+            conn.execute("INSERT OR REPLACE INTO approvals VALUES (?, ?, ?, ?, ?, ?)",
+                         (f"A-{case_id}", patch_id, approval["decision"], approval["actor"],
+                          approval["policy_tier"], approval["created_at"]))
 
     # --------------------------------------------------------------- patches
     def add_patch(self, case_id: str, patchset: dict[str, Any], *, state: str = "proposed",

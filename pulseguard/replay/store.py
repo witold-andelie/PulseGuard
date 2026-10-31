@@ -45,7 +45,10 @@ class RunStore:
 
     def latest(self) -> dict[str, Any] | None:
         runs = self.list_runs()
-        return self.load(runs[-1]) if runs else None
+        loaded = [self.load(run_id) for run_id in runs]
+        return max(loaded, key=lambda run: (run.get("recorded") is True,
+                                            run.get("started_at", ""), run["run_id"])) \
+            if loaded else None
 
     def save(self, run_id: str, data: dict[str, Any]) -> Path:
         """Atomic write (temp file + ``os.replace``). Caller must re-write the manifest."""

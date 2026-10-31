@@ -6,6 +6,7 @@ import pytest
 from pulseguard.agents.graph import GraphDeps, build_graph
 from pulseguard.agents.runner import resume_case, start_case
 from pulseguard.contracts.validate import assert_payload
+from pulseguard.patching.patch import PatchApplier, PatchSet, unified_diff
 
 
 def unexpected_call(_state):
@@ -58,12 +59,15 @@ def test_persistent_manual_approval_and_bundle(tmp_path, sample_run, mode, decis
     deps = GraphDeps(
         adjudicate=lambda state: case["verdicts"][0],
         remediate=lambda state: patchset,
-        sandbox=lambda state: {"passed": True},
+        sandbox=lambda state: {"passed": True, "diff": unified_diff(
+            PatchApplier(tmp_path).plan(PatchSet.from_payload(state["patchset"])))},
         target_root=tmp_path,
+        output_dir=tmp_path.parent / (tmp_path.name + "-bundle"),
         mode=mode,
     )
     db = tmp_path / "checkpoints.sqlite"
-    status = asyncio.run(start_case({"finding": case["finding"]}, deps, db))
+    finding = {**case["finding"], "file": "target.py"}
+    status = asyncio.run(start_case({"finding": finding}, deps, db))
     assert status["awaiting_approval"]
     assert status["values"]["events"][-1]["activity"] == "APPROVAL_REQUESTED"
     assert target.read_text() == "unsafe()\n"
@@ -71,7 +75,8 @@ def test_persistent_manual_approval_and_bundle(tmp_path, sample_run, mode, decis
     result = status["values"]
     assert not status["awaiting_approval"]
     if mode == "live" and decision == "approve":
-        assert target.read_text() == "safe()\n"
+        assert target.read_text() == "unsafe()\n"
+        assert (deps.output_dir / "target" / "target.py").read_text() == "safe()\n"
         assert result["finding"]["state"] == "remediated"
         assert result["patchset"]["state"] == "applied"
         assert "safe()" in result["bundle"]["patch"]

@@ -1,8 +1,12 @@
+import json
+
 import pytest
 
-from pulseguard.agents.adjudicator import VerdictParseError, parse_verdict
+from pulseguard.agents.adjudicator import VerdictParseError, adjudicate, parse_verdict
 from pulseguard.agents.json_parse import parse_json_response
+from pulseguard.contracts.models import Finding
 from pulseguard.contracts.validate import assert_payload
+from tests.fakes import FakeLLM, verdict
 
 
 @pytest.mark.parametrize("text", [
@@ -37,10 +41,11 @@ def test_no_decision_or_unfinished_thought(text):
     assert parse_json_response(text) is None
 
 
-def test_parsed_verdict_validates():
-    verdict = parse_verdict('{"score":0.7,"cited_evidence":["E1","E1"]}', model="test")
+def test_parsed_verdict_validates(sample_run):
+    payload = {**sample_run["cases"][0]["verdicts"][0], "score": 0.7}
+    verdict = parse_verdict(json.dumps(payload), model="test")
     assert verdict.band == "confirmed"
-    assert verdict.cited_evidence == ["E1"]
+    assert verdict.cited_evidence == payload["cited_evidence"]
     assert_payload("verdict", verdict.to_payload())
 
 
@@ -52,3 +57,33 @@ def test_parsed_verdict_validates():
 def test_invalid_verdict_fails_closed(text):
     with pytest.raises(VerdictParseError):
         parse_verdict(text, model="test")
+
+
+def test_bracketed_citations_normalised_and_system_fields_overridden():
+    payload = {**verdict(), "cited_evidence": ["[E1] source request", "[E2]", "E3"],
+               "model": "PulseGuard-4.3", "band": "false_positive", "role": "skeptic",
+               "case_id": "invented"}
+    result = parse_verdict(json.dumps(payload), model="actual-model", case_id="actual-case")
+    assert result.cited_evidence == ["E1", "E2", "E3"]
+    assert result.band == "confirmed" and result.role == "adjudicator"
+    assert result.model == "actual-model" and result.case_id == "actual-case"
+
+
+@pytest.mark.parametrize("citations", [
+    ["E1", "E1"], ["[E1] source", "E1"], ["E1 text"], ["e1"],
+    ["[E1]text"], ["[E1, E2]"], [{"id": "E1"}], "E1",
+])
+def test_invalid_citations_become_uncertain(sample_finding, citations):
+    payload = {**verdict(), "cited_evidence": citations}
+    result = adjudicate(Finding.model_validate(sample_finding), "evidence",
+                        llm=FakeLLM([payload]))
+    assert result.band == "uncertain"
+
+
+@pytest.mark.parametrize("score", [9.8, -0.1, float("inf"), float("nan")])
+def test_local_score_bounds_cannot_be_bypassed(sample_finding, score):
+    payload = {**verdict(), "score": score}
+    result = adjudicate(Finding.model_validate(sample_finding), "evidence",
+                        llm=FakeLLM([payload]))
+    assert result.band == "uncertain"
+    assert result.score == 0.5

@@ -3,9 +3,8 @@
 S1 gates: Semgrep finding count for the rule goes 1 -> 0, and the demo service's pytest suite
 passes. Counterfactual [S2], PoC witness [S3] and z3 [ST-1] are not part of S1.
 
-Status: structurally complete but only lightly exercised in the S1 skeleton - treat as a stub
-until it runs in CI against a real patch. The workspace lives under the system temp dir (which
-honours TMP/TEMP).
+Subprocess pattern adapted from revio ``src/revio/layers/static/bandit.py``.
+The workspace lives under the system temp dir (which honours TMP/TEMP).
 """
 
 from __future__ import annotations
@@ -17,10 +16,16 @@ import sys
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pulseguard.patching.patch import PatchApplier, PatchError, PatchSet, unified_diff
 from pulseguard.scanners.semgrep import SemgrepError, SemgrepRunner, SemgrepUnavailable
+
+
+class Scanner(Protocol):
+    """Injectable deterministic scanner; unit tests never need Semgrep."""
+
+    def count(self, target: str | os.PathLike[str], rule_id: str | None = None) -> int: ...
 
 
 @dataclass
@@ -34,11 +39,13 @@ class SandboxReport:
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {**asdict(self), "feedback": "" if self.passed else self.feedback()}
 
     def feedback(self) -> str:
         """Short text handed back to the Remediator on failure."""
         parts = []
+        if self.rescan_before != 1:
+            parts.append(f"baseline count must be 1; got {self.rescan_before}")
         if self.rescan_after:
             parts.append(f"re-scan still reports {self.rescan_after} finding(s)")
         if self.pytest_ok is False:
@@ -53,35 +60,44 @@ class SandboxVerifier:
         target_dir: str | os.PathLike[str],
         rule_id: str,
         tests_subdir: str = "tests",
-        runner: SemgrepRunner | None = None,
+        runner: Scanner | None = None,
         pytest_timeout: float = 120.0,
     ) -> None:
         self.target_dir = Path(target_dir)
         self.rule_id = rule_id
         self.tests_subdir = tests_subdir
-        self.runner = runner or SemgrepRunner()
+        self.runner = runner or SemgrepRunner(timeout=45.0)
         self.pytest_timeout = pytest_timeout
 
     def _pytest(self, workdir: Path) -> tuple[bool, str]:
+        env = dict(os.environ)
+        # Parent test-selection options (e.g. --collect-only) must not weaken this gate.
+        for key in ("PYTEST_ADDOPTS", "PYTEST_PLUGINS"):
+            env.pop(key, None)
+        env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         proc = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", self.tests_subdir],
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+             "--basetemp", str(workdir / ".pytest-tmp"), self.tests_subdir],
             cwd=workdir, capture_output=True, text=True, timeout=self.pytest_timeout, check=False,
+            env=env,
         )
         return proc.returncode == 0, (proc.stdout + proc.stderr)[-4000:]
 
     def verify(self, patchset: PatchSet) -> SandboxReport:
         report = SandboxReport(passed=False)
         with tempfile.TemporaryDirectory(prefix="pg-sandbox-") as tmp:
-            work = Path(tmp) / self.target_dir.name
+            work = Path(tmp) / "target"
             shutil.copytree(self.target_dir, work,
                             ignore=shutil.ignore_patterns(
-                                "__pycache__", "*.sqlite", ".pytest_cache"))
+                                "__pycache__", "*.sqlite*", "*.db", ".pytest_cache", ".git"))
             try:
                 report.rescan_before = self.runner.count(work, self.rule_id)
             except (SemgrepUnavailable, SemgrepError) as exc:
                 report.errors.append(f"re-scan unavailable: {exc}")
             try:
                 report.diff = unified_diff(PatchApplier(work).apply(patchset))
+                if not report.diff:
+                    report.errors.append("patch made no source changes")
             except PatchError as exc:
                 report.errors.append(f"patch did not apply: {exc}")
                 return report
