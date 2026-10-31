@@ -2,10 +2,11 @@
 FROM python:3.12-slim
 WORKDIR /demo
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
+# requirements.txt is scan input, including a deliberately vulnerable, unused dependency pin.
+RUN pip install --no-cache-dir 'flask>=3.0' \
     && useradd --create-home --uid 10001 demo \
     && chown demo:demo /demo
-COPY routes.py .
+COPY routes.py order_note.py ./
 USER demo
 EXPOSE 5001
 CMD ["flask", "--app", "routes", "run", "--host", "0.0.0.0", "--port", "5001"]

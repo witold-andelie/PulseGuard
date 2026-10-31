@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from pathlib import Path, PurePosixPath
 
 from pulseguard.contracts.models import Finding, FindingState, TraceStep
+from pulseguard.scanners.bandit import BanditResult
 from pulseguard.scanners.semgrep import SemgrepResult
 from pulseguard.scanners.trivy import TrivyVulnerability
 
@@ -88,8 +90,29 @@ def normalize_trivy(vuln: TrivyVulnerability) -> Finding:
         state=FindingState.RAW,
         cve_id=vuln.vulnerability_id if vuln.vulnerability_id.startswith("CVE-") else None,
         extra={
-            "pkg_name": vuln.pkg_name,
+            "kind": "dependency",
+            "package": vuln.pkg_name,
             "installed_version": vuln.installed_version,
-            "fixed_version": vuln.fixed_version,
+            "fixed_version": vuln.fixed_version or "",
+            "cve_id": vuln.vulnerability_id,
+            "manifest": vuln.target,
+            "report": vuln.report,
+            "recorded": vuln.recorded,
         },
+    )
+
+
+def normalize_bandit(result: BanditResult, root: str | os.PathLike[str] | None = None) -> Finding:
+    """revio BanditRunner match -> raw finding with locally derived assignment context."""
+    file = _relpath(result.path, root)
+    # Bandit prefixes snippet rows with line numbers; those are not part of the dedup anchor.
+    anchor = re.sub(r"(?m)^\s*\d+\s+", "", result.code)
+    fp = fingerprint_for(result.test_id, file, anchor)
+    return Finding(
+        case_id=case_id_for(fp), fingerprint=fp, rule_id=result.test_id, scanner="bandit",
+        severity=_SEVERITY_MAP.get(result.severity.lower(), "info"),  # type: ignore[arg-type]
+        message=result.message, file=file, line=result.line, state=FindingState.RAW,
+        trace=[TraceStep(**step) for step in result.trace.steps()] if result.trace else [],
+        extra={"test_id": result.test_id, "confidence": result.confidence,
+               "severity": result.severity},
     )

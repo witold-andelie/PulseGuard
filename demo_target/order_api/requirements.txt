@@ -1,2 +1,5 @@
 flask>=3.0
 pytest>=8
+# @vuln dependency: CVE-2024-35195, fixed in requests 2.32.0 (scan-only demo pin).
+# This manifest is scanner input; do not install it into the PulseGuard/test environment.
+requests==2.31.0
