@@ -85,6 +85,8 @@ class GraphDeps:
     scanner: Scanner | None = None
     mode: str = "live"
     bus_health: str = "fresh"
+    # extract_topology() result for this run (LIVE opt-in); None keeps the hand-written fixture.
+    topology: dict[str, Any] | None = None
 
 
 def _trace_from_steps(steps: list[dict[str, Any]]) -> DataflowTrace:
@@ -256,7 +258,8 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         return update
 
     def blast(state: SecOpsState) -> dict[str, Any]:
-        result = score_finding(state["finding"], code=_code(state) or None)
+        result = score_finding(state["finding"], code=_code(state) or None,
+                               topology=deps.topology)
         return {
             "blast_radius": result, "priority": result["priority"],
             "events": [_ev(state, "BLAST_RADIUS_SCORED", "risk",

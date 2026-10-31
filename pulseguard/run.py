@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import time
 import uuid
 from collections import deque
@@ -20,6 +21,7 @@ from typing import Any
 from pulseguard.agents.graph import GraphDeps
 from pulseguard.agents.llm import LLMClient, make_llm
 from pulseguard.agents.runner import resume_case, start_case
+from pulseguard.agents.topology_extract import extract_topology
 from pulseguard.bus.memory import FINDINGS_TOPIC, InMemoryBus, Message
 from pulseguard.bus.watchdog import BusWatchdog
 from pulseguard.env import load_env_file
@@ -32,6 +34,7 @@ from pulseguard.scanners.trivy import TrivyReportLoader
 
 Collector = Callable[[Path], list[dict[str, Any]]]
 ALLOWED_SCANNERS = ("semgrep", "bandit", "trivy")
+TOPOLOGY_SOURCES = ("fixture", "image")
 LIVE_LABEL = "LIVE results are lost on restart."
 LiveRunner = Callable[..., Awaitable[list[dict[str, Any]]]]
 
@@ -105,12 +108,19 @@ async def live_run(
     llm: LLMClient | None = None, scanner: Any = None, run_id: str | None = None,
     collectors: Sequence[Collector] | None = None,
     scanners: Sequence[str] | None = None,
+    topology_source: str | None = None,
 ) -> list[dict[str, Any]]:
     """Scan -> normalise -> publish/consume -> graph, pausing for every approval.
 
     ``collectors`` add findings from the other scanners (default: bandit and the committed
     Trivy report); pass ``()`` to run on the injected Semgrep-style ``scanner`` only.
+    ``topology_source`` (default ``PG_TOPOLOGY_SOURCE``, else ``fixture``): ``image`` asks the
+    model to extract the topology from the architecture image once per run; a failed
+    validation falls back to the hand-written fixture inside ``extract_topology``.
     """
+    source = topology_source or os.environ.get("PG_TOPOLOGY_SOURCE", "fixture")
+    if source not in TOPOLOGY_SOURCES:
+        raise ValueError("PG_TOPOLOGY_SOURCE must be fixture or image")
     target = target.resolve()
     if target != (REPO_ROOT / "demo_target" / "order_api").resolve():
         raise ValueError("LIVE scanning is limited to demo_target/order_api")
@@ -132,6 +142,10 @@ async def live_run(
     for collect in (defaults if collectors is None else collectors):
         payloads.extend(await asyncio.to_thread(collect, target))
     payloads = merge_findings(group_dependency_findings(payloads))
+    topology = None
+    if source == "image" and payloads:
+        topology = await asyncio.to_thread(
+            extract_topology, llm=client, session=f"pg-{run_id}-topology")
     bus = InMemoryBus()
     watchdog = BusWatchdog()
     inbox: list[Message] = []
@@ -150,7 +164,7 @@ async def live_run(
         output = (output_dir or db_path.parent / "pulseguard-bundles") / run_id / finding["case_id"]
         deps = GraphDeps(
             target_root=target, output_dir=output, llm=client, scanner=scanner,
-            bus_health=watchdog.health(),
+            bus_health=watchdog.health(), topology=topology,
         )
         status = await start_case({
             "finding": finding, "code": file.read_text(encoding="utf-8"),

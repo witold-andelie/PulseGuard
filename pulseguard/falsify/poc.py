@@ -35,7 +35,8 @@ from pulseguard.paths import REPO_ROOT
 
 DEMO_ROOT = REPO_ROOT / "demo_target" / "order_api"
 DEMO_MODULES = ("routes.py", "order_note.py")
-MAX_TIMEOUT_S = 5.0
+# Two child runs (before and after) share this budget; slow hosts (Render free tier) need headroom.
+MAX_TIMEOUT_S = 20.0
 
 # -I -S prevents user/sitecustomize imports before the network guard. Trusted interpreter
 # package paths are supplied explicitly so Flask remains available in a Python 3.12 venv.

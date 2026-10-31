@@ -24,6 +24,7 @@ from pulseguard.paths import REPO_ROOT
 from pulseguard.replay.record import record, write_recording
 from pulseguard.replay.store import RunStore
 from pulseguard.replay.verify import verify_manifest, write_manifest
+from pulseguard.risk.blast_radius import load_topology
 from pulseguard.run import live_run
 from pulseguard.scanners.normalize import normalize
 from pulseguard.store import Store
@@ -227,6 +228,27 @@ def test_live_bus_ingestion_with_injected_adapters(tmp_path, monkeypatch):
     assert len(statuses) == 1
     assert statuses[0]["awaiting_approval"]
     assert statuses[0]["values"]["run_id"] == "bus-live"
+    assert statuses[0]["values"]["blast_radius"]["fixture"] == "hand-written"
+
+
+def test_live_image_topology_is_extracted_once_and_feeds_blast_radius(tmp_path, monkeypatch):
+    monkeypatch.setattr(SandboxVerifier, "_pytest", lambda self, work: (True, "3 passed"))
+    llm = FakeLLM([load_topology().to_payload(), verdict(), PATCH, low_verdict(), POC])
+    statuses = asyncio.run(live_run(
+        REPO_ROOT / "demo_target" / "order_api", db_path=tmp_path / "live.sqlite",
+        llm=llm, scanner=FakeScanner(), run_id="topology-live", collectors=(),
+        topology_source="image"))
+    blast = statuses[0]["values"]["blast_radius"]
+    assert blast["source"] == "extracted" and blast["validation"]["ok"] is True
+    assert blast["priority"] == "P0"
+    assert [call["session"] for call in llm.calls].count("pg-topology-live-topology") == 1
+
+
+def test_unknown_topology_source_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="PG_TOPOLOGY_SOURCE"):
+        asyncio.run(live_run(
+            REPO_ROOT / "demo_target" / "order_api", db_path=tmp_path / "live.sqlite",
+            llm=FakeLLM([]), scanner=FakeScanner(), collectors=(), topology_source="guess"))
 
 
 def test_recording_artifacts_and_preference(setup_case, tmp_path):
