@@ -30,10 +30,11 @@ def test_health_and_default_mode(client):
 
 def test_mode_from_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("PG_MODE", "LiVe")
+    monkeypatch.delenv("PG_LIVE_TOKEN", raising=False)
     with TestClient(create_app(db_path=tmp_path / "live.sqlite")) as client:
         assert client.get("/api/mode").json()["mode"] == "LIVE"
         assert client.get("/api/cases").json()["cases"] == []
-        assert client.post("/api/runs").status_code in (404, 405)
+        assert client.post("/api/runs").status_code == 503
 
 
 def test_board_detail_trace_and_simulated_decisions(client):

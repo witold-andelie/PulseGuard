@@ -183,9 +183,34 @@ output is `<database directory>/pulseguard-bundles/<run_id>/<case_id>/`; a scan 
 another parent with `--output-dir`. Existing case threads are deduplicated by finding
 fingerprint; use a fresh database for an independent run or recording.
 
-The only S1 LIVE target is the bundled `demo_target/order_api`.
-`POST /api/runs` remains absent. LIVE operation is local; public token-gated runs are S3.
+The only LIVE target is the bundled `demo_target/order_api`.
 Use separate database files for LIVE and REPLAY, since REPLAY rebuilds its case tables at boot.
+
+### Sprint 3: PoC witness and token-gated LIVE
+
+Code findings that pass the sandbox now get a model-proposed PoC request alongside the
+counterfactual check. The executor accepts only registered GET routes on fresh sandbox copies
+of the bundled demo, with capped string parameters and a deterministic twelve-order SQLite
+fixture. Flask test clients run in isolated child processes with outbound sockets blocked,
+proxies disabled and a shared five-second execution deadline. E5 and the case-detail `poc`
+field report `witnessed`, inconclusive `not_witnessed`, or `failed`; a remaining deviation
+blocks approval. If a witnessed baseline cannot be checked after patching, it also escalates.
+
+To enable the API locally, configure the model variables above, set `PG_MODE=live` and
+`PG_LIVE_TOKEN` to a secret, then launch the API. Start and inspect a run from PowerShell:
+
+    $headers = @{ Authorization = "Bearer $env:PG_LIVE_TOKEN" }
+    $run = Invoke-RestMethod http://localhost:8000/api/runs -Method Post -Headers $headers `
+        -ContentType application/json -Body '{"scanners":["semgrep","bandit","trivy"]}'
+    Invoke-RestMethod "http://localhost:8000/api/runs/$($run.run_id)" -Headers $headers
+
+The request body may only select these scanners; omitted selection runs all three. Trivy
+uses the committed **RECORDED** report, with no Trivy binary or database in the image.
+LIVE run status is process-local, with one scan at a time (409) and three starts/minute
+(429). LIVE results are lost on restart; the API payload and UI status label say so.
+REPLAY returns 404 for run endpoints; LIVE without a configured token returns 503 and bad
+credentials return 401. Render remains **REPLAY by default**, with `PG_LIVE_TOKEN` marked
+`sync: false`; this work does not change the deployed service or record a new replay.
 
 ## Record a real run
 

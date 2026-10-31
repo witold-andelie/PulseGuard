@@ -54,7 +54,7 @@ def test_scenario_1_sqli_p0_human_bundle_and_rollback(tmp_path, monkeypatch):
     activities = [e["activity"] for e in status["values"]["events"]]
     assert activities == [
         "FINDING_INGESTED", "EVIDENCE_BUILT", "VERDICT_CONFIRMED", "VERIFIED",
-        "BLAST_RADIUS_SCORED", "PATCH_PROPOSED", "SANDBOX_PASSED", "APPROVAL_REQUESTED",
+        "BLAST_RADIUS_SCORED", "PATCH_PROPOSED", "SANDBOX_PASSED", "VERIFIED", "APPROVAL_REQUESTED",
     ]
     assert "E4" in status["values"]["evidence_block"]
     assert "exposure: /order reachable from api-gateway (internet-facing)" in (

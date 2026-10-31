@@ -77,6 +77,9 @@ def test_recording_env_file_keeps_key_out_of_bundle_trace_and_metadata(tmp_path,
         adj = sum(1 for item in calls if "Adjudicator" in item["messages"][0]["content"])
         if "Remediator" in system:
             payload = PATCH
+        elif "PoC" in system:
+            payload = {"route": "/order", "params": {"id": "1' OR '1'='1"},
+                       "expected_max_rows": 1, "rationale": "Check the parameterized repair."}
         elif adj > 1:
             payload = verdict(0.1)
         else:
@@ -115,7 +118,7 @@ def test_recording_env_file_keeps_key_out_of_bundle_trace_and_metadata(tmp_path,
     assert metadata["structured_mode"] == "off" and metadata["structured_output"] is False
     assert metadata["latency_ms"] >= 0
     assert metadata["usage"]["opencode"] == {"cost": 0.001}
-    assert len(case["model_calls"]) == 3
+    assert len(case["model_calls"]) == 4
     assert metadata["session_header_sent"] is True
     assert all(call["usage"]["total_tokens"] == 150 for call in case["model_calls"])
     artifact_roots = [root, tmp_path / "pulseguard-bundles"]
