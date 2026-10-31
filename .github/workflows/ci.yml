@@ -37,7 +37,7 @@ jobs:
       - name: Verify scanner installations
         run: |
           python -m bandit --version
-          python -m semgrep --version
+          semgrep --version
           trivy --version
       - run: python -m ruff check .
       - name: Unit, runtime and Bandit tests
