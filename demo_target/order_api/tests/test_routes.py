@@ -31,14 +31,21 @@ def test_order_returns_matching_row(client):
     resp = client.get("/order?id=1")
     assert resp.status_code == 200
     assert resp.get_json() == [{"id": 1, "item": "bond-future", "qty": 10}]
+    assert client.get("/order_by_number?number=1").get_json() == resp.get_json()
+    assert client.get("/order_note?note=bond").get_json() == resp.get_json()
 
 
 def test_unknown_order_returns_empty_list(client):
     resp = client.get("/order?id=999")
     assert resp.status_code == 200
     assert resp.get_json() == []
+    assert client.get("/order_by_number?number=999").get_json() == []
+    assert client.get("/order_note?note=missing").get_json() == []
+    assert client.get("/order_note?note=' OR '1'='1").get_json() == []
 
 
 def test_missing_id_is_rejected(client):
     resp = client.get("/order")
     assert resp.status_code == 400
+    for query in ("", "?number=no", "?number=1' OR '1'='1"):
+        assert client.get("/order_by_number" + query).status_code == 400

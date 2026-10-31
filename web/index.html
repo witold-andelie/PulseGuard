@@ -10,7 +10,7 @@
 <body>
   <header>
     <a class="brand" href="/">Pulse<span>Guard</span></a>
-    <span class="subtitle">Governed security operations · Sprint 1</span>
+    <span class="subtitle">Falsify before acting · Sprint 2</span>
     <strong id="mode" class="badge">MODE UNAVAILABLE</strong>
   </header>
   <main>
@@ -19,12 +19,23 @@
       <button id="refresh" type="button">Refresh</button>
     </section>
     <p id="status" role="status" aria-live="polite">Loading source…</p>
-    <p class="notice">Every patch requires manual approval. LIVE results use ephemeral storage.</p>
+    <p class="notice">Policy governs approval: verified P2/P3 may be automatic, P0/P1 need a human,
+      and stale or stalled buses allow advice only. LIVE results use ephemeral storage.</p>
+    <nav aria-label="Views"><a href="#board">Cases</a><a href="#process">Process &amp; KPIs</a></nav>
     <section id="board" aria-label="Cases grouped by state"></section>
     <section id="detail" aria-label="Case detail" tabindex="-1">
       <h2>Case detail</h2><p>Select a case to inspect its evidence, verdict and trace.</p>
     </section>
-    <footer>Neural proposals. Deterministic checks. Human approval.</footer>
+    <section id="process" aria-label="Process and KPIs">
+      <h2>Process &amp; KPIs</h2>
+      <p>Ingest → guard → evidence → adjudicate → challenge / verify → risk → sandbox → approval → close</p>
+      <p><a href="/api/eventlog.csv" download>Download event log CSV</a> ·
+        <a href="/api/kpis">KPI JSON</a></p>
+      <p class="notice">Computed from stored events in the displayed run mode. Rework means
+        SANDBOX_FAILED → PATCH_PROPOSED; its mean includes cases with zero loops.</p>
+      <div id="kpis" aria-live="polite">Loading process data…</div>
+    </section>
+    <footer>Neural proposals. Deterministic checks. Governed remediation.</footer>
   </main>
 </body>
 </html>

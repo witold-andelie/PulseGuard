@@ -7,6 +7,7 @@ with code findings.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pulseguard.contracts.models import Finding, FindingState
@@ -30,6 +31,46 @@ def location_keys(finding: dict[str, Any]) -> set[tuple[str, int]]:
 
 def _rank(finding: dict[str, Any]) -> int:
     return SCANNER_RANK.get(str(finding.get("scanner") or ""), 9)
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", version))
+
+
+def group_dependency_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One case per (manifest, package): the bump must clear every CVE on that pin.
+
+    Trivy lists each CVE separately (requests 2.31.0 has three, fixed in 2.32.0, 2.32.4 and
+    2.33.0). Separate cases would each bump to their own fixed version and leave the others
+    open, so the grouped case targets the highest fixed version and keeps every CVE id.
+    """
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    out: list[dict[str, Any]] = []
+    for finding in findings:
+        extra = finding.get("extra") or {}
+        if extra.get("kind") != "dependency":
+            out.append(finding)
+            continue
+        key = (str(extra.get("manifest") or finding["file"]), str(extra.get("package")))
+        if key not in groups:
+            groups[key] = []
+            out.append(finding)  # placeholder keeps first-seen order
+        groups[key].append(finding)
+    for members in groups.values():
+        target = max(members, key=lambda f: _version_key(f["extra"].get("fixed_version") or ""))
+        cve_ids = sorted({str(m["extra"]["cve_id"]) for m in members
+                          if m["extra"].get("cve_id")})
+        merged = {**target, "extra": {**target["extra"], "cve_ids": cve_ids}}
+        if len(members) > 1:
+            anchor = f"{merged['extra']['package']}=={merged['extra']['installed_version']}"
+            fp = fingerprint_for(",".join(cve_ids), merged["extra"]["manifest"], anchor)
+            merged.update(fingerprint=fp, case_id=case_id_for(fp),
+                          message=f"{merged['extra']['package']} "
+                                  f"{merged['extra']['installed_version']}: "
+                                  f"{len(cve_ids)} CVEs, fixed in "
+                                  f"{merged['extra']['fixed_version']}")
+        out[out.index(members[0])] = merged
+    return out
 
 
 def merge_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:

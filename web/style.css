@@ -24,7 +24,7 @@ h3 { color: #b8d7f5; }
 .eyebrow { color: #5eead4; font-size: .75rem; letter-spacing: .1rem; }
 .notice { color: #c4cede; font-size: .9rem; }
 #status { border-left: 3px solid #facc15; padding: .6rem 1rem; background: #1b2635; }
-#board { display: grid; grid-template-columns: repeat(7, minmax(175px, 1fr));
+#board { display: grid; grid-template-columns: repeat(8, minmax(175px, 1fr));
   gap: .75rem; overflow-x: auto; padding: 1rem 0; }
 .column { min-height: 150px; padding: .8rem; border-radius: .5rem; background: #182333; }
 .column h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04rem; }
@@ -44,6 +44,28 @@ pre { padding: 1rem; background: #0b121c; color: #c1d8ed; overflow-x: auto;
 li { margin: .6rem 0; line-height: 1.5; }
 .trace { font-family: ui-monospace, monospace; font-size: .8rem; overflow-wrap: anywhere; }
 footer { font-size: .8rem; padding: 1rem 0; }
+a { color: #5eead4; }
+nav { display: flex; gap: 1.5rem; }
+#process { border: 1px solid #334155; border-radius: .6rem; padding: 1.5rem; }
+section[id] { scroll-margin-top: 6rem; }
+.priority { display: inline-block; border: 1px solid #7c91a9; padding: .25rem .6rem;
+  border-radius: .4rem; font-size: .8rem; }
+.priority.P0, .priority.P1, .failed { color: #fda4af; }
+.priority.P2, .priority.P3, .passed { color: #5eead4; }
+.topology { width: 100%; max-height: 500px; border: 1px solid #334155; border-radius: .5rem; }
+.edge { stroke: #7891ac; stroke-width: 2; }
+.edge.scored { stroke: #facc15; stroke-width: 4; }
+.node circle { fill: #233448; stroke: #7891ac; stroke-width: 2; }
+.node.scored circle { stroke: #facc15; stroke-width: 3; }
+.node text { fill: #e6edf6; font-size: 16px; }
+.node .node-meta { fill: #a9b8cb; font-size: 12px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+.kpi-grid div { padding: 1rem; background: #182333; border-radius: .5rem; }
+dt { color: #a9b8cb; font-size: .9rem; }
+dd { margin: .5rem 0 0; font-size: 1.3rem; }
+table { border-collapse: collapse; min-width: 240px; }
+caption { text-align: left; margin-bottom: .75rem; }
+th, td { text-align: left; padding: .6rem 1rem; border-bottom: 1px solid #334155; }
 @media (max-width: 650px) {
   .subtitle { display: none; }
   main { padding-top: 1rem; }

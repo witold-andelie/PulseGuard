@@ -1,12 +1,12 @@
 # PulseGuard
 
 Governed security operations: scan → guard → deterministic evidence → adjudication →
-sandbox → manual approval → local remediation bundle.
+sandbox → governed approval → local remediation bundle.
 
 The design document and its OPM model are maintained outside this repository; "framework
 section N" references in code and docs point to that document.
 
-## Sprint 1 status
+## Status: S1 deployed, Sprint 2 SURFACE increment
 
 Implemented: OpenAI-compatible structured chat with timeout, bounded retries and plain-JSON
 fallback; evidence-first adjudication with four short steps; three score bands; trace-confined
@@ -25,18 +25,57 @@ with a fake scanner and the actual demo pytest suite. Real Semgrep integration t
 parameterised patch and a no-op negative control; they carry `@pytest.mark.semgrep` and skip
 when the CLI cannot execute. A sandbox failure in LIVE always fails the gate.
 
-**No genuine model run has been recorded in this repository yet.** The committed
-`s1-placeholder` replay remains **PLACEHOLDER / SYNTHETIC** with
-`recorded=false`; its verdict, patch and trace are illustrative and its sandbox was not run.
-REPLAY decisions remain labelled simulations and do not change the stored run. A recording
-command is implemented, but requires real PG_MODEL_* configuration and working Semgrep.
-The replay loader handles multiple runs and prefers `recorded=true` over any placeholder.
+S1 is deployed on Render. The existing `recorded-20261031T012001-4192c0` bundle is a
+**RECORDED LIVE** S1 run using Muse Spark. The older `s1-placeholder` remains explicitly
+**PLACEHOLDER / SYNTHETIC** (`recorded=false`). The loader prefers the recorded run.
+REPLAY decisions remain labelled simulations and do not change recorded results.
+This SURFACE increment does not record or alter any replay run.
 
-No real Trivy report is bundled; its report loader remains available and unit-tested.
-Sprint 2/3 and stretch investigation features are absent. Cases needing human intervention
-use `review_status=human_review`, including quarantine, uncertain verdicts and exhausted
-sandbox attempts; this does not introduce the S2 `escalated` finding state or S2 activities.
-Rejected cases retain their finding classification and have `closed_at` plus `CASE_CLOSED`.
+S2 SURFACE adds Bandit and Trivy adapters, three demo scenarios, event-log CSV and computed
+KPIs, and no-build case-detail views for verification, skeptic, counterfactual, priority,
+policy, bus health, rollback and a service topology SVG with the scored path highlighted.
+The UI tolerates missing S2 fields in the existing S1 replay. The process view includes a
+CSV download and final-state counts. The REPLAY/LIVE badge remains visible while scrolling.
+
+S2 CORE supplies the graph wiring, deterministic dependency bump, falsification checks,
+risk, tiered approval and rollback endpoint in a separate workstream. Until merged, the
+LIVE CLI still follows its S1 Semgrep-only path and manual approval; the new scanner
+adapters can be exercised independently. No S3 or stretch features are added here.
+
+## Sprint 2 demo scenarios
+
+| Scenario | Scanner / expected S2 behavior |
+| --- | --- |
+| `/order?id=1` | Original SQL injection, unchanged; one Semgrep taint finding; human approval after verification |
+| `requirements.txt` | Scan-only `requests==2.31.0`; real Trivy CVEs and fixed versions; CORE uses a deterministic bump with P2/P3 automatic approval when policy permits |
+| `/order_by_number?number=1` | Bandit B608 despite the `int()` cast; assignment context exposes the sanitizer; Semgrep taint rule stays silent; score below 0.3 is dropped and logged |
+| `/order_note?note=bond` | Bandit B608 pattern match on parameterized SQL with a planted reviewer instruction; guard quarantine and human review |
+
+`order_note.py` holds scenario 4 and is registered from `routes.py`. Its own file prevents
+the file-scoped guard from quarantining unrelated scenarios. Every route keeps its request
+source and SQL sink inside one function. The original Semgrep rule is unchanged.
+`# @vuln` / `# @safe` comments are ground truth, never proof of exploitability.
+
+The dependency manifest is **scanner input**. Do not install
+`demo_target/order_api/requirements.txt` into your development/test environment. The demo
+does not import Requests. The project's `dev` extra supplies Flask and pytest; the sandbox
+copies the target but uses that existing interpreter without installing the target manifest.
+The demo Dockerfile also installs Flask directly. The three demo pytest cases exercise all
+routes, including rejection of non-integer numbers and parameterized note searches.
+
+`demo_target/order_api/scan/trivy-report.json` is **RECORDED**, produced by official
+Trivy **0.76.1** on **2026-10-31** with `trivy fs --format json --scanners vuln`.
+Its added `PulseGuard` provenance block records tool version, timestamp, manifest SHA-256
+and the Windows release archive SHA-256, checked against the
+[official release checksums](https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_checksums.txt).
+The scanner reported three medium findings: CVE-2024-35195 (fixed 2.32.0),
+CVE-2024-47081 (fixed 2.32.4) and CVE-2026-25645 (fixed 2.33.0).
+The first is documented in the
+[Requests advisory](https://github.com/psf/requests/security/advisories/GHSA-9wx4-h78v-vm56).
+A bump to 2.33.0 addresses all three findings in this report; bumping only to 2.32.0
+addresses the first. No scanner rows were fabricated or filtered out of this report.
+Unattested and synthetic report inputs normalise with `Finding.extra.recorded=false` and
+the UI labels them SYNTHETIC / unrecorded. A scanner failure never substitutes fake output.
 
 ## Run locally
 
@@ -52,6 +91,26 @@ Requires Python **3.12**. Use the existing virtual environment on Windows:
 On Linux, substitute `.venv/bin/python`. Open http://localhost:8000/.
 PG_MODE defaults to `replay`; hashes are verified before any replay case is served.
 Invalid replay bundles return HTTP 503. Pytest collects both application and demo tests.
+
+### Event log and KPIs
+
+`GET /api/eventlog.csv` exports exactly
+`case_id,activity,timestamp,resource,priority,score,run_mode`, with ISO-8601 UTC timestamps.
+This is Celonis-ready CSV, without a Celonis service integration. `GET /api/kpis` computes
+from the same event rows in the serving mode, for both replay-seeded and LIVE databases:
+
+- `mean_time_to_remediate_s`: remediated `CASE_CLOSED` minus first `FINDING_INGESTED`,
+  excluding rejected, dropped, incomplete and rolled-back cases; null if none qualify.
+- `false_positives_dropped`, `approvals_automatic`, `approvals_human`: activity counts,
+  with automatic approvals identified by `policy_tier=auto` or resource `policy:auto`.
+- `rework_loops`: `mean` and `max` of failures followed by a new proposal, per case;
+  intervening events are allowed, and cases with zero loops count toward the mean.
+- `cases_total`, `cases_by_final_state`: distinct event case ids and their latest observed
+  classification or `CASE_CLOSED` outcome; open cases are included.
+
+Missing optional event priority/score values export as empty CSV fields. Legacy S1 events
+recover their mode from the run relation. Mode-filtered exports never relabel REPLAY as LIVE.
+Invalid replay data blocks telemetry with HTTP 503, like the case endpoints.
 
 For LIVE, configure the three variables with your own OpenAI-compatible provider:
 `PG_MODEL_BASE_URL`, `PG_MODEL_NAME`, `PG_MODEL_API_KEY`. They have no built-in defaults.
@@ -150,10 +209,24 @@ trace JSONL and bundle files. It sets `recorded=true`, keeps the placeholder, re
 
 ## Scanning and deployment
 
-The scan extra installs Semgrep **1.183.0** and its compatible FastAPI version. Run only the
-real scanner integration tests with:
+The scan extra installs Semgrep **1.183.0**, its compatible FastAPI version and Bandit.
+Bandit runs as a pure-Python subprocess. Real Semgrep tests carry `@pytest.mark.semgrep`
+and skip when the CLI cannot execute. Real Trivy tests carry `@pytest.mark.trivy` and skip
+when the binary is absent. No tests make real model calls. Run scanner checks with:
 
     .venv/Scripts/python -m pytest -q -m semgrep -rs
+    .venv/Scripts/python -m bandit -r demo_target/order_api -f json
+    .venv/Scripts/python -m pytest -q -m trivy -rs
+
+Install Trivy from an official release and verify its archive against that release's
+checksum list. Set `PG_TRIVY_BIN` if it is not on PATH; `PG_TRIVY_CACHE_DIR` selects the
+cache directory for integration tests. A local scan can refresh scanner output with:
+
+    trivy fs --format json --scanners vuln demo_target/order_api
+
+Preserve actual output, tool version, date and manifest hash when replacing the bundled
+report. Do not mark hand-written fixtures RECORDED. `TrivyReportLoader` consumes report
+JSON; `TrivyRunner` is optional local tooling and does not download databases at API boot.
 
 The bundled taint rule uses the SQL argument as the focused sink. Previous host verification
 found one result for the shipped concatenated query, zero for a parameterised query, and zero
@@ -162,7 +235,7 @@ after an int-cast sanitizer. `SemgrepRunner` combines JSON sink locations with t
 
 The main Dockerfile uses python:3.12-slim, a non-root user, Semgrep and PORT.
 Render configuration follows framework section 11.1. CI runs Ruff, pytest, contract validation
-and replay verification. This implementation has not been deployed or built into a Docker image.
+and replay verification. S1 is live on Render; this S2 increment has not been deployed.
 The deliberately vulnerable Flask service uses a throwaway SQLite fixture in its tests.
 
 ## Pre-existing components
@@ -172,4 +245,6 @@ patterns; tradepulse guard, contracts, trace, API and replay patterns; SymbAI-Ta
 adjudication protocol, JSON parsing and confidence bands; quant-foundation-gat's in-memory
 bus bypass; and PerpPulse's static UI and serving modes. The original skeleton established
 these contracts and seams; this increment connects the S1 model, sandbox, approval,
-persistence, bundling and recording paths.
+persistence, bundling and recording paths. S2 SURFACE adapts revio's Bandit subprocess
+pattern to Bandit/Trivy, tradepulse/revio event-store conventions to CSV/KPIs and PerpPulse's
+static UI pattern to the S2 contract views. The demo and event aggregation are local additions.

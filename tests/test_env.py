@@ -97,6 +97,8 @@ def test_recording_env_file_keeps_key_out_of_bundle_trace_and_metadata(tmp_path,
 
     monkeypatch.setattr("pulseguard.run.make_llm", factory)
     monkeypatch.setattr("pulseguard.run.SemgrepRunner", lambda **kwargs: FakeScanner())
+    # Single-case recording: keep the other scanners out of this key-hygiene test.
+    monkeypatch.setattr("pulseguard.run.DEFAULT_COLLECTORS", ())
     monkeypatch.setattr(SandboxVerifier, "_pytest", lambda self, work: (True, "3 passed"))
     root = tmp_path / "replay"
     assert record_main([

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from pulseguard import __version__
 from pulseguard.agents.graph import GraphDeps
 from pulseguard.agents.runner import CaseNotAwaitingApproval, resume_case
+from pulseguard.api_eventlog import router as eventlog_router
 from pulseguard.contracts.validate import assert_payload
 from pulseguard.governance.approval import ApprovalError, record_decision
 from pulseguard.patching.history import FixHistoryStore
@@ -132,6 +133,7 @@ def create_app(
 
     app.state.store = store
     app.state.info = info
+    app.include_router(eventlog_router)
 
     @app.get("/health")
     def health() -> JSONResponse:

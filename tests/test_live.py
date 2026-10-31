@@ -218,7 +218,8 @@ def test_live_bus_ingestion_with_injected_adapters(tmp_path, monkeypatch):
     monkeypatch.setattr(SandboxVerifier, "_pytest", lambda self, work: (True, "3 passed"))
     statuses = asyncio.run(live_run(
         REPO_ROOT / "demo_target" / "order_api", db_path=tmp_path / "live.sqlite",
-        llm=FakeLLM([verdict(), PATCH, low_verdict()]), scanner=FakeScanner(), run_id="bus-live"))
+        llm=FakeLLM([verdict(), PATCH, low_verdict()]), scanner=FakeScanner(), run_id="bus-live",
+        collectors=()))
     assert len(statuses) == 1
     assert statuses[0]["awaiting_approval"]
     assert statuses[0]["values"]["run_id"] == "bus-live"

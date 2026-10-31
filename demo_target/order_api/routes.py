@@ -7,7 +7,7 @@ function, so Semgrep CE's intraprocedural taint analysis sees the whole flow).
 import os
 import sqlite3
 
-from flask import Flask, g, jsonify, request
+from flask import Flask, Response, g, jsonify, request
 
 app = Flask(__name__)
 app.config["DATABASE"] = os.environ.get("ORDER_API_DB", "orders.sqlite")
@@ -36,6 +36,25 @@ def order():
     conn = get_db()
     rows = conn.execute(q).fetchall()  # @vuln sqli
     return jsonify([dict(r) for r in rows])
+
+
+@app.route("/order_by_number")
+def order_by_number() -> Response | tuple[Response, int]:
+    raw_number = request.args.get("number")
+    try:
+        order_number = int(raw_number)
+    except (TypeError, ValueError):
+        return jsonify({"error": "number must be an integer"}), 400
+    number_query = "SELECT id, item, qty FROM orders WHERE id = " + str(order_number)
+    conn = get_db()
+    rows = conn.execute(number_query).fetchall()  # @safe sqli: int-cast; Bandit B608 match
+    return jsonify([dict(r) for r in rows])
+
+
+# Imported here, not at the top, so /order keeps the line numbers of the recorded S1 run.
+from order_note import register_order_note  # noqa: E402
+
+register_order_note(app, get_db)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import json
 import uuid
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -19,18 +20,26 @@ from pulseguard.agents.runner import resume_case, start_case
 from pulseguard.bus.memory import FINDINGS_TOPIC, InMemoryBus, Message
 from pulseguard.bus.watchdog import BusWatchdog
 from pulseguard.env import load_env_file
-from pulseguard.ingest import finding_from_trivy, merge_findings
+from pulseguard.ingest import group_dependency_findings, merge_findings
 from pulseguard.paths import REPO_ROOT, default_db_path
-from pulseguard.scanners.normalize import normalize
+from pulseguard.scanners.bandit import BanditRunner
+from pulseguard.scanners.normalize import normalize, normalize_bandit, normalize_trivy
 from pulseguard.scanners.semgrep import SemgrepRunner
 from pulseguard.scanners.trivy import TrivyReportLoader
+
+Collector = Callable[[Path], list[dict[str, Any]]]
 
 
 async def live_run(
     target: Path, *, db_path: Path | None = None, output_dir: Path | None = None,
     llm: LLMClient | None = None, scanner: Any = None, run_id: str | None = None,
+    collectors: Sequence[Collector] | None = None,
 ) -> list[dict[str, Any]]:
-    """Scan -> normalise -> publish/consume -> graph, pausing for every approval."""
+    """Scan -> normalise -> publish/consume -> graph, pausing for every approval.
+
+    ``collectors`` add findings from the other scanners (default: bandit and the committed
+    Trivy report); pass ``()`` to run on the injected Semgrep-style ``scanner`` only.
+    """
     target = target.resolve()
     if target != (REPO_ROOT / "demo_target" / "order_api").resolve():
         raise ValueError("S1 LIVE scanning is limited to demo_target/order_api")
@@ -40,9 +49,9 @@ async def live_run(
     run_id = run_id or f"live-{uuid.uuid4().hex[:12]}"
     results = await asyncio.to_thread(scanner.run, target)
     payloads = [normalize(result, root=target).to_payload() for result in results]
-    payloads.extend(_optional_bandit_findings(target))
-    payloads.extend(_optional_trivy_findings(target))
-    payloads = merge_findings(payloads)
+    for collect in (DEFAULT_COLLECTORS if collectors is None else collectors):
+        payloads.extend(await asyncio.to_thread(collect, target))
+    payloads = merge_findings(group_dependency_findings(payloads))
     bus = InMemoryBus()
     watchdog = BusWatchdog()
     inbox: list[Message] = []
@@ -71,40 +80,24 @@ async def live_run(
     return statuses
 
 
-def _optional_bandit_findings(target: Path) -> list[dict[str, Any]]:
-    """SURFACE owns BanditRunner; skip cleanly when that module is not in this worktree."""
-    try:
-        from pulseguard.scanners.bandit import BanditRunner  # type: ignore
-    except ImportError:
+def bandit_findings(target: Path) -> list[dict[str, Any]]:
+    """Bandit pattern findings; an unavailable bandit contributes nothing."""
+    if not BanditRunner.available():
         return []
-    try:
-        runner = BanditRunner()
-        results = runner.run(target)
-    except Exception:
-        return []
-    out: list[dict[str, Any]] = []
-    for result in results:
-        if hasattr(result, "to_payload"):
-            out.append(result.to_payload())
-        elif isinstance(result, dict) and "fingerprint" in result:
-            out.append(result)
-    return out
+    return [normalize_bandit(result, root=target).to_payload()
+            for result in BanditRunner().run(target)]
 
 
-def _optional_trivy_findings(target: Path) -> list[dict[str, Any]]:
+def trivy_findings(target: Path) -> list[dict[str, Any]]:
+    """Findings from the committed Trivy report; provenance decides ``recorded``."""
     report = target / "scan" / "trivy-report.json"
     if not report.is_file():
         return []
-    raw = report.read_text(encoding="utf-8")
-    recorded = "synthetic" not in raw.lower()
-    loader = TrivyReportLoader(report)
-    return [
-        finding_from_trivy(
-            vuln, manifest="requirements.txt", report="scan/trivy-report.json",
-            recorded=recorded,
-        ).to_payload()
-        for vuln in loader.vulnerabilities()
-    ]
+    return [normalize_trivy(vuln).to_payload()
+            for vuln in TrivyReportLoader(report).vulnerabilities()]
+
+
+DEFAULT_COLLECTORS: tuple[Collector, ...] = (bandit_findings, trivy_findings)
 
 
 def main(argv: list[str] | None = None) -> int:
