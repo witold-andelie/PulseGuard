@@ -30,3 +30,7 @@ traces/
 
 # Rendered OPM diagrams
 *.svg
+
+# Design documents kept out of the public repository
+PULSEGUARD_FRAMEWORK.md
+pulseguard_opm.dot

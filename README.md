@@ -3,8 +3,8 @@
 Governed security operations: scan → guard → deterministic evidence → adjudication →
 sandbox → manual approval → local remediation bundle.
 
-The authoritative design is [PULSEGUARD_FRAMEWORK.md](PULSEGUARD_FRAMEWORK.md), with the
-[OPM model](pulseguard_opm.dot).
+The design document and its OPM model are maintained outside this repository; "framework
+section N" references in code and docs point to that document.
 
 ## Sprint 1 status
 
