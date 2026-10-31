@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/witold-andelie/PulseGuard/contracts/finding.schema.json",
+  "title": "Finding",
+  "description": "One security finding = one case. States per framework section 3.1 (S1 states plus S2 'escalated').",
+  "type": "object",
+  "required": ["case_id", "fingerprint", "rule_id", "file", "line", "state", "evidence_ids"],
+  "properties": {
+    "case_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,64}$" },
+    "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16,64}$" },
+    "rule_id": { "type": "string", "minLength": 1 },
+    "scanner": { "type": "string", "enum": ["semgrep", "trivy", "bandit"] },
+    "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] },
+    "message": { "type": "string" },
+    "file": { "type": "string", "minLength": 1 },
+    "line": { "type": "integer", "minimum": 0 },
+    "state": {
+      "type": "string",
+      "enum": [
+        "raw",
+        "normalized",
+        "quarantined",
+        "confirmed",
+        "uncertain",
+        "false_positive",
+        "remediated",
+        "escalated"
+      ]
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^E[0-9]+$" },
+      "uniqueItems": true
+    },
+    "trace": {
+      "type": "array",
+      "description": "Dataflow trace steps, source first, sink last.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "line", "content"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["source", "intermediate", "sink"] },
+          "line": { "type": "integer", "minimum": 0 },
+          "content": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cve_id": { "type": ["string", "null"] },
+    "extra": { "type": "object" }
+  },
+  "additionalProperties": false
+}

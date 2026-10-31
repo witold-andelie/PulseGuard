@@ -1,0 +1,4 @@
+# Keep LF everywhere so replay/manifest.sha256.json hashes match on every checkout.
+* text=auto eol=lf
+*.png binary
+*.jpg binary

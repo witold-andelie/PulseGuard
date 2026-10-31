@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: pulseguard
+    runtime: docker
+    repo: https://github.com/witold-andelie/PulseGuard
+    branch: main
+    plan: free
+    region: frankfurt
+    autoDeployTrigger: off
+    healthCheckPath: /health
+    envVars:
+      - key: PG_MODE              # replay | live
+        value: replay
+      - key: PG_DB_PATH
+        value: /tmp/pulseguard.sqlite
+      - key: PG_MODEL_BASE_URL    # decided later; set in the dashboard
+        sync: false
+      - key: PG_MODEL_NAME
+        sync: false
+      - key: PG_MODEL_API_KEY
+        sync: false
+      - key: PG_LIVE_TOKEN        # required for LIVE runs [S3]
+        sync: false

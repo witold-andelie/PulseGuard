@@ -1,0 +1,83 @@
+"""Approving: S1 policy = manual approval for every patch.
+
+Decision semantics adapted from revio ``src/revio/cli/fix.py`` (``run_fix_flow`` /
+``_ask_decision``), with the terminal prompt replaced by the web approval card and the LangGraph
+interrupt. Tiered policy (auto-approve P2/P3 + verified, advise-only on stale bus) is S2.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any, Literal
+
+Decision = Literal["approve", "reject"]
+DECISIONS: tuple[str, ...] = ("approve", "reject")
+POLICY_TIER = "manual"  # S1: every patch needs a human
+
+
+class ApprovalError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class ApprovalRequest:
+    case_id: str
+    patch_attempt: int
+    sandbox_passed: bool
+    policy_tier: str = POLICY_TIER
+    reason: str = "S1 policy: every patch requires manual approval"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class Approval:
+    case_id: str
+    decision: Decision
+    actor: str
+    policy_tier: str = POLICY_TIER
+    simulated: bool = False
+    comment: str = ""
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @property
+    def approved(self) -> bool:
+        return self.decision == "approve"
+
+
+def requires_human(patchset: Any = None, *, sandbox_passed: bool = True) -> bool:
+    """S1: always True. (S2 replaces this with the tiered policy.)"""
+    return True
+
+
+def can_request_approval(sandbox_passed: bool) -> bool:
+    """Only sandbox-passed patches reach the approval card."""
+    return bool(sandbox_passed)
+
+
+def make_request(case_id: str, attempt: int, sandbox_passed: bool) -> ApprovalRequest:
+    if not can_request_approval(sandbox_passed):
+        raise ApprovalError("patch has not passed the sandbox gate")
+    return ApprovalRequest(case_id=case_id, patch_attempt=attempt, sandbox_passed=True)
+
+
+def record_decision(
+    case_id: str, decision: str, actor: str, *, mode: str = "live", comment: str = ""
+) -> Approval:
+    """Validate and build an :class:`Approval`. In REPLAY mode the decision is simulated."""
+    if decision not in DECISIONS:
+        raise ApprovalError(f"decision must be one of {DECISIONS}, got {decision!r}")
+    if not actor or not actor.strip():
+        raise ApprovalError("actor is required")
+    return Approval(
+        case_id=case_id,
+        decision=decision,  # type: ignore[arg-type]
+        actor=actor.strip()[:80],
+        simulated=mode.lower() == "replay",
+        comment=comment[:500],
+    )

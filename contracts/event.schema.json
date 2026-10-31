@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/witold-andelie/PulseGuard/contracts/event.schema.json",
+  "title": "Event",
+  "description": "Process event (tradepulse TraceEvent + case_id/activity). Rows of the events table and the audit trail.",
+  "type": "object",
+  "required": ["seq", "case_id", "activity", "ts", "resource", "attributes"],
+  "properties": {
+    "seq": { "type": "integer", "minimum": 0 },
+    "case_id": { "type": "string", "minLength": 1 },
+    "activity": {
+      "type": "string",
+      "enum": [
+        "FINDING_INGESTED",
+        "FINDING_QUARANTINED",
+        "EVIDENCE_BUILT",
+        "VERDICT_CONFIRMED",
+        "VERDICT_UNCERTAIN",
+        "FALSE_POSITIVE_DROPPED",
+        "CHALLENGED",
+        "VERIFIED",
+        "ABSTAINED_ESCALATED",
+        "BLAST_RADIUS_SCORED",
+        "PATCH_PROPOSED",
+        "SANDBOX_FAILED",
+        "SANDBOX_PASSED",
+        "APPROVAL_REQUESTED",
+        "APPROVED",
+        "REJECTED",
+        "PATCH_APPLIED",
+        "ROLLED_BACK",
+        "CASE_CLOSED",
+        "SPAN_START",
+        "SPAN_END"
+      ]
+    },
+    "ts": { "type": "string", "format": "date-time" },
+    "resource": { "type": "string", "minLength": 1 },
+    "attributes": { "type": "object" }
+  },
+  "additionalProperties": false
+}

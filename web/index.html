@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PulseGuard · Case board</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">Pulse<span>Guard</span></a>
+    <span class="subtitle">Governed security operations · Sprint 1</span>
+    <strong id="mode" class="badge">MODE UNAVAILABLE</strong>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">INVESTIGATE → VERIFY → APPROVE</p><h1>Security case board</h1></div>
+      <button id="refresh" type="button">Refresh</button>
+    </section>
+    <p id="status" role="status" aria-live="polite">Loading source…</p>
+    <p class="notice">Every patch requires manual approval. LIVE results use ephemeral storage.</p>
+    <section id="board" aria-label="Cases grouped by state"></section>
+    <section id="detail" aria-label="Case detail" tabindex="-1">
+      <h2>Case detail</h2><p>Select a case to inspect its evidence, verdict and trace.</p>
+    </section>
+    <footer>Neural proposals. Deterministic checks. Human approval.</footer>
+  </main>
+</body>
+</html>

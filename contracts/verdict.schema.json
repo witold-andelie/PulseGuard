@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/witold-andelie/PulseGuard/contracts/verdict.schema.json",
+  "title": "Verdict",
+  "description": "Adjudication result (framework 4.3). Decision fields come first so truncation cannot drop them. Also used as the model's structured-output schema.",
+  "type": "object",
+  "required": [
+    "is_exploitable",
+    "score",
+    "band",
+    "cited_evidence",
+    "step1_dataflow",
+    "step2_constraint",
+    "step3_context",
+    "step4_verdict",
+    "role",
+    "model"
+  ],
+  "properties": {
+    "is_exploitable": { "type": "boolean" },
+    "score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "band": { "type": "string", "enum": ["confirmed", "uncertain", "false_positive", "abstained"] },
+    "cited_evidence": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^E[0-9]+$" },
+      "uniqueItems": true
+    },
+    "step1_dataflow": { "type": "string" },
+    "step2_constraint": { "type": "string" },
+    "step3_context": { "type": "string" },
+    "step4_verdict": { "type": "string" },
+    "role": { "type": "string", "enum": ["adjudicator", "skeptic", "verifier", "counterfactual"] },
+    "model": { "type": "string" },
+    "case_id": { "type": "string" }
+  },
+  "additionalProperties": false
+}

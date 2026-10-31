@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+pytest-cache-files-*/
+.ruff_cache/
+.mypy_cache/
+
+# Local state and secrets
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+.env
+.env.*
+
+# Runtime traces
+traces/
+*.trace.jsonl
+
+# Rendered OPM diagrams
+*.svg

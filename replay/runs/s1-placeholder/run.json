@@ -1,0 +1,182 @@
+{
+  "run_id": "s1-placeholder",
+  "mode": "REPLAY",
+  "label": "PLACEHOLDER · synthetic case; no recorded scanner, model or sandbox run",
+  "recorded": false,
+  "source_commit": null,
+  "started_at": "2026-10-31T00:00:00Z",
+  "cases": [
+    {
+      "finding": {
+        "case_id": "PG-S1-PLACEHOLDER",
+        "fingerprint": "78817274bf32e8e10f9c4018eb830fe0063a0269b166c7669aa166b1e029999e",
+        "rule_id": "flask-sqli-taint",
+        "scanner": "semgrep",
+        "severity": "high",
+        "message": "Synthetic placeholder SQL injection case; not actual scanner output.",
+        "file": "demo_target/order_api/routes.py",
+        "line": 37,
+        "state": "confirmed",
+        "evidence_ids": [
+          "E1",
+          "E2",
+          "E3"
+        ],
+        "trace": [
+          {
+            "kind": "source",
+            "line": 32,
+            "content": "order_id = request.args.get(\"id\")"
+          },
+          {
+            "kind": "intermediate",
+            "line": 35,
+            "content": "q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\""
+          },
+          {
+            "kind": "sink",
+            "line": 37,
+            "content": "rows = conn.execute(q).fetchall()  # @vuln sqli"
+          }
+        ],
+        "extra": {}
+      },
+      "created_at": "2026-10-31T00:00:00Z",
+      "evidence": [
+        {
+          "evidence_id": "E1",
+          "kind": "rule_source",
+          "text": "rule flask-sqli-taint · source request.args.get(\"id\") @ demo_target/order_api/routes.py:32",
+          "payload": {
+            "rule_id": "flask-sqli-taint",
+            "source": "request.args.get(\"id\")",
+            "file": "demo_target/order_api/routes.py",
+            "line": 32
+          }
+        },
+        {
+          "evidence_id": "E2",
+          "kind": "dataflow",
+          "text": "dataflow order_id (L32) -> q (L35) -> conn.execute(q) (L37)",
+          "payload": {
+            "steps": [
+              {
+                "kind": "source",
+                "line": 32,
+                "content": "order_id = request.args.get(\"id\")"
+              },
+              {
+                "kind": "intermediate",
+                "line": 35,
+                "content": "q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\""
+              },
+              {
+                "kind": "sink",
+                "line": 37,
+                "content": "rows = conn.execute(q).fetchall()  # @vuln sqli"
+              }
+            ]
+          }
+        },
+        {
+          "evidence_id": "E3",
+          "kind": "sanitizer",
+          "text": "sanitizer rules on path: none matched (int-cast, parameterised query, allow-list)",
+          "payload": {
+            "checked": [
+              "int-cast",
+              "parameterised query",
+              "allow-list"
+            ],
+            "matched": []
+          }
+        }
+      ],
+      "verdicts": [
+        {
+          "is_exploitable": true,
+          "score": 0.9,
+          "band": "confirmed",
+          "cited_evidence": [
+            "E1",
+            "E2",
+            "E3"
+          ],
+          "step1_dataflow": "The placeholder trace links request input to the SQL text.",
+          "step2_constraint": "No sanitizer appears in the placeholder trace.",
+          "step3_context": "The bundled /order Flask route reads a local demo database.",
+          "step4_verdict": "Synthetic confirmed verdict for UI development; no model was called.",
+          "role": "adjudicator",
+          "model": "placeholder-no-model-call"
+        }
+      ],
+      "patches": [
+        {
+          "patch_id": "P-S1-PLACEHOLDER",
+          "state": "proposed",
+          "patchset": {
+            "case_id": "PG-S1-PLACEHOLDER",
+            "ops": [
+              {
+                "path": "demo_target/order_api/routes.py",
+                "old": "    q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\"\n    conn = get_db()\n    rows = conn.execute(q).fetchall()  # @vuln sqli",
+                "new": "    q = \"SELECT id, item, qty FROM orders WHERE id = ?\"\n    conn = get_db()\n    rows = conn.execute(q, (order_id,)).fetchall()"
+              }
+            ],
+            "rationale": "Use bound SQL parameters. Synthetic proposal, never applied to the demo.",
+            "attempt": 1,
+            "state": "proposed"
+          },
+          "sandbox_report": {
+            "passed": false,
+            "status": "not_run",
+            "label": "Placeholder: re-scan and pytest gate have not been recorded"
+          }
+        }
+      ],
+      "approvals": [],
+      "events": [
+        {
+          "seq": 1,
+          "case_id": "PG-S1-PLACEHOLDER",
+          "activity": "FINDING_INGESTED",
+          "ts": "2026-10-31T00:00:01Z",
+          "resource": "scanner",
+          "attributes": {
+            "placeholder": true
+          }
+        },
+        {
+          "seq": 2,
+          "case_id": "PG-S1-PLACEHOLDER",
+          "activity": "EVIDENCE_BUILT",
+          "ts": "2026-10-31T00:00:02Z",
+          "resource": "evidence",
+          "attributes": {
+            "placeholder": true
+          }
+        },
+        {
+          "seq": 3,
+          "case_id": "PG-S1-PLACEHOLDER",
+          "activity": "VERDICT_CONFIRMED",
+          "ts": "2026-10-31T00:00:03Z",
+          "resource": "adjudicator",
+          "attributes": {
+            "placeholder": true
+          }
+        },
+        {
+          "seq": 4,
+          "case_id": "PG-S1-PLACEHOLDER",
+          "activity": "PATCH_PROPOSED",
+          "ts": "2026-10-31T00:00:04Z",
+          "resource": "remediator",
+          "attributes": {
+            "placeholder": true
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  background: #101722;
+  color: #e6edf6;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+header {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
+  gap: 1.5rem; padding: 1rem 4vw; background: #101722f5; border-bottom: 1px solid #334155;
+}
+.brand { color: inherit; font-size: 1.5rem; font-weight: 750; text-decoration: none; }
+.brand span { color: #5eead4; }
+.subtitle, .empty, footer { color: #a9b8cb; }
+.badge { margin-left: auto; border: 1px solid #facc15; color: #fde68a;
+  border-radius: 2rem; padding: .35rem .8rem; font-size: .8rem; white-space: nowrap; }
+.badge.live { border-color: #5eead4; color: #5eead4; }
+main { max-width: 1600px; margin: auto; padding: 2rem 4vw; }
+.intro { display: flex; align-items: center; justify-content: space-between; }
+h1 { font-size: clamp(1.7rem, 4vw, 2.6rem); margin: .4rem 0 1rem; }
+h2 { font-size: 1.2rem; }
+h3 { color: #b8d7f5; }
+.eyebrow { color: #5eead4; font-size: .75rem; letter-spacing: .1rem; }
+.notice { color: #c4cede; font-size: .9rem; }
+#status { border-left: 3px solid #facc15; padding: .6rem 1rem; background: #1b2635; }
+#board { display: grid; grid-template-columns: repeat(7, minmax(175px, 1fr));
+  gap: .75rem; overflow-x: auto; padding: 1rem 0; }
+.column { min-height: 150px; padding: .8rem; border-radius: .5rem; background: #182333; }
+.column h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04rem; }
+button { cursor: pointer; color: #d6fff6; background: #153e3a; border: 1px solid #367e73;
+  border-radius: .4rem; padding: .65rem 1rem; font: inherit; }
+button:hover { background: #24544d; }
+button:focus-visible, a:focus-visible { outline: 2px solid #facc15; outline-offset: 3px; }
+button:disabled { opacity: .45; cursor: default; }
+.card { width: 100%; text-align: left; background: #233448; padding: .8rem; }
+.card span { display: block; color: #b2c6db; font-size: .75rem; margin-top: .6rem;
+  overflow-wrap: anywhere; }
+#detail { margin: 1rem 0; padding: 1.5rem; border: 1px solid #334155; border-radius: .6rem; }
+#detail section + section { border-top: 1px solid #334155; margin-top: 1.5rem; padding-top: .6rem; }
+#detail button { margin-right: .75rem; }
+pre { padding: 1rem; background: #0b121c; color: #c1d8ed; overflow-x: auto;
+  font-size: .85rem; line-height: 1.6; border-radius: .4rem; }
+li { margin: .6rem 0; line-height: 1.5; }
+.trace { font-family: ui-monospace, monospace; font-size: .8rem; overflow-wrap: anywhere; }
+footer { font-size: .8rem; padding: 1rem 0; }
+@media (max-width: 650px) {
+  .subtitle { display: none; }
+  main { padding-top: 1rem; }
+  #detail { padding: 1rem; }
+}

@@ -1,0 +1,26 @@
+# PulseGuard local Semgrep taint rule (framework section 4.1).
+#
+# The sink is written as `patterns: [pattern: $CONN.execute($Q, ...), focus-metavariable: $Q]`
+# (block-style YAML below). Without the `patterns:` wrapper the whole call is the sink and the
+# parameterised fix `conn.execute("... ?", (order_id,))` would still be flagged.
+# Semgrep CE taint analysis is intraprocedural: keep source and sink in one function.
+rules:
+  - id: flask-sqli-taint
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Untrusted input from flask.request.args reaches the SQL text of $CONN.execute()
+      without sanitisation (possible SQL injection, CWE-89). Use a parameterised query.
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      category: security
+      pulseguard_sprint: S1
+    pattern-sources:
+      - pattern: flask.request.args.get(...)
+    pattern-sanitizers:
+      - pattern: int(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: $CONN.execute($Q, ...)
+          - focus-metavariable: $Q

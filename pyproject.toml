@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulseguard"
+version = "0.1.0"
+description = "Governed neuro-symbolic multi-agent security operations (Sprint 1 skeleton)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary - hackathon submission" }
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "jsonschema",
+    "langgraph",
+    "langgraph-checkpoint-sqlite",
+    "openai",
+]
+
+[project.optional-dependencies]
+# Semgrep is invoked as a CLI subprocess, never imported.
+# Semgrep's pinned OpenTelemetry dependencies need a compatible FastAPI.
+scan = ["semgrep==1.183.0", "fastapi<0.142"]
+dev = ["pytest", "httpx", "ruff", "flask>=3.0"]
+
+[tool.setuptools.packages.find]
+include = ["pulseguard*"]
+
+[tool.setuptools.package-data]
+pulseguard = ["rules/semgrep/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "demo_target/order_api/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
