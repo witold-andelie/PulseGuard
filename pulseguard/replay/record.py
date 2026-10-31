@@ -24,8 +24,17 @@ from pulseguard.run import live_run
 from pulseguard.store import Store
 
 
+def _portable_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
+    """Replace LIVE-run host paths with paths relative to the recorded case directory."""
+    out = {k: v for k, v in bundle.items() if k != "applied_target"}
+    out["output_dir"] = "bundle"
+    return out
+
+
 def _json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # LF only: the manifest hashes bytes, and the repo stores replay files with eol=lf.
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
+                    newline="\n")
 
 
 def write_recording(
@@ -87,11 +96,17 @@ def write_recording(
             _json(case_dir / "model_calls.json", case["model_calls"])
             _json(case_dir / "approval.json", case["approval"])
             (case_dir / "trace.jsonl").write_text(
-                "".join(json.dumps(event) + "\n" for event in case["events"]), encoding="utf-8")
+                "".join(json.dumps(event) + "\n" for event in case["events"]), encoding="utf-8",
+                newline="\n")
             bundle_dir = case_dir / "bundle"
             bundle_dir.mkdir()
-            for name in ("patch.diff", "pr_description.md", "metadata.json"):
-                shutil.copyfile(Path(case["bundle"]["output_dir"]) / name, bundle_dir / name)
+            source = Path(case["bundle"]["output_dir"])
+            for name in ("patch.diff", "pr_description.md"):
+                shutil.copyfile(source / name, bundle_dir / name)
+            # The published bundle must not carry host paths: point into the bundle itself.
+            case["bundle"] = _portable_bundle(case["bundle"])
+            metadata = json.loads((source / "metadata.json").read_text(encoding="utf-8"))
+            _json(bundle_dir / "metadata.json", _portable_bundle(metadata))
         _json(staging / "run.json", run)
         target.parent.mkdir(parents=True, exist_ok=True)
         staging.rename(target)

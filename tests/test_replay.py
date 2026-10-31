@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 
 import pytest
@@ -13,6 +14,22 @@ def test_committed_bundle_is_verified():
     assert result.ok, result
     assert result.checked >= 1
     assert len(result.manifest_sha256) == 64
+
+
+def test_committed_bundle_is_lf_only():
+    # .gitattributes stores replay files with eol=lf; CRLF on disk would break the
+    # manifest hashes on any Linux checkout (Render).
+    crlf = [p.relative_to(replay_dir()).as_posix() for p in replay_dir().rglob("*")
+            if p.is_file() and b"\r\n" in p.read_bytes()]
+    assert crlf == []
+
+
+def test_committed_bundle_has_no_host_paths():
+    # A drive letter not preceded by a letter, so code such as `None:\n` does not match.
+    host_path = re.compile(rb"(?<![A-Za-z])[A-Za-z]:(?:\\\\|/)[A-Za-z_]|/home/|/Users/|/tmp/")
+    leaks = [p.relative_to(replay_dir()).as_posix() for p in replay_dir().rglob("*")
+             if p.is_file() and host_path.search(p.read_bytes())]
+    assert leaks == []
 
 
 @pytest.mark.parametrize("change", ["tamper", "missing", "unlisted"])

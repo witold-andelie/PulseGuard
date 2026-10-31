@@ -1,0 +1,61 @@
+{
+  "verdicts": [
+    {
+      "is_exploitable": true,
+      "score": 0.95,
+      "band": "confirmed",
+      "cited_evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "step1_dataflow": "Taint from request.args.get flows via order_id into q to conn.execute.",
+      "step2_constraint": "No sanitizer, cast, or parameterization is applied on the path.",
+      "step3_context": "Code is reachable via HTTP route with attacker-controlled query input.",
+      "step4_verdict": "Direct string concatenation into SQL execution is exploitable SQL injection.",
+      "role": "adjudicator",
+      "model": "muse-spark-1.3-contributor",
+      "case_id": "PG-78817274bf"
+    }
+  ],
+  "model_metadata": {
+    "model": "muse-spark-1.3-contributor",
+    "base_url_host": "opencode.ai",
+    "structured_mode": "auto",
+    "structured_output": true,
+    "latency_ms": 10759.651,
+    "usage": {
+      "completion_tokens": 1502,
+      "prompt_tokens": 901,
+      "total_tokens": 2403,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 1392,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cache_write_tokens": null,
+        "cached_tokens": 0,
+        "image_tokens": null,
+        "text_tokens": null
+      },
+      "cost": 0,
+      "opencode": {
+        "billing_source": "go",
+        "list_cost": 0.0003905,
+        "allowance": 0.0003905,
+        "tokens": {
+          "input": 901,
+          "output": 1502,
+          "reasoning": 1392,
+          "cache_read": 0,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        }
+      }
+    }
+  }
+}

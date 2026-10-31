@@ -1,0 +1,9 @@
+{
+  "case_id": "PG-78817274bf",
+  "decision": "approve",
+  "actor": "security-engineer (recording)",
+  "policy_tier": "manual",
+  "simulated": false,
+  "comment": "",
+  "created_at": "2026-10-31T01:20:28.401037+00:00"
+}

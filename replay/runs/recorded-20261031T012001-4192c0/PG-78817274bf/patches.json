@@ -1,0 +1,31 @@
+[
+  {
+    "patch_id": "P-PG-78817274bf-1",
+    "case_id": "PG-78817274bf",
+    "attempt": 1,
+    "state": "applied",
+    "patchset": {
+      "case_id": "PG-78817274bf",
+      "ops": [
+        {
+          "path": "routes.py",
+          "old": "    q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\"\n    conn = get_db()\n    rows = conn.execute(q).fetchall()",
+          "new": "    q = \"SELECT id, item, qty FROM orders WHERE id = ?\"\n    conn = get_db()\n    rows = conn.execute(q, (order_id,)).fetchall()"
+        }
+      ],
+      "rationale": "Replace string-concatenated SQL with parameterised query to prevent SQL injection while preserving behavior for valid ids.",
+      "attempt": 1,
+      "state": "applied"
+    },
+    "sandbox_report": {
+      "passed": true,
+      "rescan_before": 1,
+      "rescan_after": 0,
+      "pytest_ok": true,
+      "pytest_tail": "...                                                                      [100%]\n3 passed in 0.13s\n",
+      "diff": "--- a/routes.py\n+++ b/routes.py\n@@ -32,9 +32,9 @@\n     order_id = request.args.get(\"id\")\n     if order_id is None:\n         return jsonify({\"error\": \"missing id\"}), 400\n-    q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\"\n+    q = \"SELECT id, item, qty FROM orders WHERE id = ?\"\n     conn = get_db()\n-    rows = conn.execute(q).fetchall()  # @vuln sqli\n+    rows = conn.execute(q, (order_id,)).fetchall()  # @vuln sqli\n     return jsonify([dict(r) for r in rows])\n \n \n",
+      "errors": [],
+      "feedback": ""
+    }
+  }
+]

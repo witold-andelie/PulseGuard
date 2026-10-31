@@ -1,0 +1,14 @@
+--- a/routes.py
++++ b/routes.py
+@@ -32,9 +32,9 @@
+     order_id = request.args.get("id")
+     if order_id is None:
+         return jsonify({"error": "missing id"}), 400
+-    q = "SELECT id, item, qty FROM orders WHERE id = '" + order_id + "'"
++    q = "SELECT id, item, qty FROM orders WHERE id = ?"
+     conn = get_db()
+-    rows = conn.execute(q).fetchall()  # @vuln sqli
++    rows = conn.execute(q, (order_id,)).fetchall()  # @vuln sqli
+     return jsonify([dict(r) for r in rows])
+ 
+ 

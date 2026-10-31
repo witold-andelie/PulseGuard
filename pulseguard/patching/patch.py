@@ -204,9 +204,11 @@ def write_bundle(
     bundle["output_dir"] = str(output_dir)
     bundle["applied_target"] = str(applied_target)
     (output_dir / "patch.diff").write_text(planned_diff, encoding="utf-8", newline="")
-    (output_dir / "pr_description.md").write_text(bundle["pr_description"], encoding="utf-8")
+    (output_dir / "pr_description.md").write_text(bundle["pr_description"], encoding="utf-8",
+                                                  newline="\n")
     metadata = {**bundle, "finding": finding, "verdict": verdict,
                 "sandbox_report": sandbox_report, "approval": approval,
                 "patchset": patchset.to_payload()}
-    (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8",
+                                              newline="\n")
     return bundle
