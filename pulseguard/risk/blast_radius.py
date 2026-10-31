@@ -2,8 +2,9 @@
 
 Re-implements a small Topology dataclass and Propagator protocol locally
 (``src/quant_alpha/graph/propagate.py`` idea; do not vendor that repo). Edges are
-weighted by privilege and data sensitivity, with decay per hop. The topology fixture
-is hand-written. The SQLi case on /order is P0 (framework 13 scenario 1).
+weighted by privilege and data sensitivity, with decay per hop. The default topology
+is hand-written; S3 can inject a validated extraction. The SQLi case on /order is P0
+(framework 13 scenario 1).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from pulseguard.contracts.models import Priority
+from pulseguard.risk.topology import validate_topology
 
 SENSITIVITY_VALUE = {"low": 0.25, "medium": 0.55, "high": 1.0}
 DECAY = 0.7
@@ -47,7 +49,9 @@ class Edge:
 class Topology:
     nodes: dict[str, Node]
     edges: list[Edge]
-    fixture: str = "hand-written"
+    fixture: str | None = "hand-written"
+    source: Literal["fixture", "extracted"] = "fixture"
+    validation: dict[str, Any] | None = None
 
     def outgoing(self, node_id: str) -> list[Edge]:
         return [edge for edge in self.edges if edge.src == node_id]
@@ -90,6 +94,30 @@ def load_topology(path: str | Path | None = None) -> Topology:
         for e in data["edges"]
     ]
     return Topology(nodes, edges, fixture=str(data.get("fixture", "hand-written")))
+
+
+def topology_from_result(result: Mapping[str, Any]) -> Topology:
+    """Adapt ``agents/topology_extract.py`` output to the quant-foundation-gat risk seam."""
+    source = result["source"]
+    if source not in ("fixture", "extracted"):
+        raise ValueError("unknown topology source")
+    validation = result.get("validation")
+    if not isinstance(validation, dict):
+        raise ValueError("topology result needs validation evidence")
+    if source == "fixture":
+        topology = load_topology()
+        topology.validation = validation
+        return topology
+    data = result["topology"]
+    if validation.get("ok") is not True or not validate_topology(data)["ok"]:
+        raise ValueError("extracted topology must pass deterministic validation")
+    return Topology(
+        {n["id"]: Node(n["id"], n["label"], n["internet_facing"], n["sensitivity"])
+         for n in data["nodes"]},
+        [Edge(e["from"], e["to"], float(e["privilege"]), float(e["sensitivity"]))
+         for e in data["edges"]],
+        fixture=None, source="extracted", validation=validation,
+    )
 
 
 class RiskPropagator:
@@ -208,10 +236,13 @@ def is_dependency(finding: Mapping[str, Any]) -> bool:
 
 
 def score_finding(
-    finding: Mapping[str, Any], *, code: str | None = None, topology: Topology | None = None,
+    finding: Mapping[str, Any], *, code: str | None = None,
+    topology: Topology | Mapping[str, Any] | None = None,
     propagator: RiskPropagator | None = None,
 ) -> dict[str, Any]:
     """Return the case-detail ``blast_radius`` object and set Priority P0..P3."""
+    if isinstance(topology, Mapping):
+        topology = topology_from_result(topology)
     topology = topology or load_topology()
     propagator = propagator or RiskPropagator()
     origin = origin_service(finding)
@@ -234,11 +265,17 @@ def score_finding(
     path = inbound + [step for step in outbound if step["node"] != "api-gateway"]
     if inbound and outbound and outbound[0]["node"] == origin:
         path = inbound + outbound
-    return {
+    result = {
         "priority": priority.value,
         "score": round(raw, 4),
         "path": path,
         "topology": topology.to_payload(),
-        "fixture": topology.fixture,
         "exposure": exposure_text(finding, code),
     }
+    if topology.source == "extracted":
+        result.update(source="extracted", validation=topology.validation)
+    else:
+        result["fixture"] = topology.fixture
+        if topology.validation is not None:
+            result["validation"] = topology.validation
+    return result

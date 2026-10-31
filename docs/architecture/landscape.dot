@@ -1,0 +1,27 @@
+// PulseGuard demo service landscape. Generated image: landscape.png.
+// Quoted ids and explicit quoted risk attributes form the cross-checkable DOT subset.
+// Context nodes/edges have topology="context" and are excluded from service topology.
+digraph landscape {
+    graph [rankdir=LR, bgcolor="white", pad="0.35", nodesep="0.55", ranksep="1.0",
+           dpi=110, fontname="Arial", fontsize=18, labelloc=t,
+           label="PulseGuard demo service landscape"];
+    node [shape=box, style="rounded,filled", fillcolor="#edf3fa", color="#465872",
+          fontname="Arial", fontsize=12, margin="0.16,0.12"];
+    edge [color="#465872", fontname="Arial", fontsize=10, arrowsize=0.8];
+
+    "internet" [topology="context", shape=ellipse, fillcolor="#f1f1f1", label="Internet\n(context only)"];
+    "api-gateway" [service_label="API Gateway", internet_facing="true", sensitivity="low", fillcolor="#dceeff", label="API Gateway\napi-gateway\ninternet_facing: true\nsensitivity: low"];
+    "order-api" [service_label="Order API", internet_facing="false", sensitivity="medium", fillcolor="#fff0cd", label="Order API\norder-api\ninternet_facing: false\nsensitivity: medium"];
+    "clearing-ledger-db" [service_label="Clearing ledger DB", internet_facing="false", sensitivity="high", shape=cylinder, fillcolor="#fbdada", label="Clearing ledger DB\nclearing-ledger-db\ninternet_facing: false\nsensitivity: high"];
+    "auth-service" [service_label="Auth service", internet_facing="false", sensitivity="medium", label="Auth service\nauth-service\ninternet_facing: false\nsensitivity: medium"];
+    "market-data" [service_label="Market data", internet_facing="false", sensitivity="low", label="Market data\nmarket-data\ninternet_facing: false\nsensitivity: low"];
+    "internal-jobs" [service_label="Internal jobs", internet_facing="false", sensitivity="low", label="Internal jobs\ninternal-jobs\ninternet_facing: false\nsensitivity: low"];
+
+    "internet" -> "api-gateway" [topology="context", label="public ingress\n(context only)"];
+    "api-gateway" -> "order-api" [privilege="0.9", sensitivity="0.8", label="privilege: 0.9\nsensitivity: 0.8"];
+    "order-api" -> "clearing-ledger-db" [privilege="1.0", sensitivity="1.0", penwidth=2, label="privilege: 1.0\nsensitivity: 1.0"];
+    "api-gateway" -> "auth-service" [privilege="0.5", sensitivity="0.5", label="privilege: 0.5\nsensitivity: 0.5"];
+    "auth-service" -> "order-api" [privilege="0.4", sensitivity="0.5", label="privilege: 0.4\nsensitivity: 0.5"];
+    "order-api" -> "market-data" [privilege="0.3", sensitivity="0.2", label="privilege: 0.3\nsensitivity: 0.2"];
+    "internal-jobs" -> "order-api" [privilege="0.2", sensitivity="0.2", label="privilege: 0.2\nsensitivity: 0.2"];
+}
