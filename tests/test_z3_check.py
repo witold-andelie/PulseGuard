@@ -166,3 +166,30 @@ def test_verify_finding_includes_validator_lines(tmp_path):
     )
     assert report["ok"]
     assert "validator_lines" in {c["name"] for c in report["checks"]}
+
+
+def test_graph_evidence_node_puts_e6_in_the_adjudicator_block():
+    from pulseguard.agents.graph import GraphDeps, build_graph
+
+    code, lines, rel = _lines("alnum_unsat.py")
+    source, sink = _source_sink(lines)
+    finding = {
+        "case_id": "PG-z3graph", "fingerprint": "cd" * 16, "rule_id": "flask-sqli-taint",
+        "scanner": "semgrep", "file": rel, "line": sink, "state": "raw", "evidence_ids": [],
+        "trace": [
+            {"kind": "source", "line": source, "content": lines[source - 1].strip()},
+            {"kind": "sink", "line": sink, "content": lines[sink - 1].strip()},
+        ],
+    }
+    seen: dict[str, str] = {}
+
+    def adjudicate(state):
+        seen["block"] = state["evidence_block"]
+        return {"is_exploitable": False, "score": 0.05, "band": "false_positive",
+                "cited_evidence": ["E6"], "role": "adjudicator", "model": "fake",
+                "step1_dataflow": "-", "step2_constraint": "-", "step3_context": "-",
+                "step4_verdict": "-"}
+
+    deps = GraphDeps(adjudicate=adjudicate, scanner=EchoScanner(finding), target_root=REPO_ROOT)
+    build_graph(deps).compile().invoke({"finding": finding, "code": code})
+    assert "[E6] validator model: ^[A-Za-z0-9_-]{1,12}$ admits a quote? unsat" in seen["block"]

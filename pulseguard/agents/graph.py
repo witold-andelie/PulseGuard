@@ -151,7 +151,9 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         steps = state.get("trace") or [s.model_dump() for s in finding.trace]
         code = _code(state)
         exposure = exposure_text(state["finding"], code or None)
-        items = build_hard_evidence(finding, _trace_from_steps(steps), exposure=exposure)
+        # code= lets evidence add E6 (z3 validator proof) before adjudication.
+        items = build_hard_evidence(finding, _trace_from_steps(steps), exposure=exposure,
+                                    code=code or None)
         ids = [item.evidence_id for item in items]
         return {
             "finding": dict(state["finding"], evidence_ids=ids),
@@ -600,7 +602,7 @@ def _patched_block(state: SecOpsState, root: Path) -> str:
         steps = state.get("trace") or [s.model_dump() for s in finding.trace]
         items = build_hard_evidence(
             finding, _trace_from_steps(steps),
-            exposure=exposure_text(state["finding"], code),
+            exposure=exposure_text(state["finding"], code), code=code,
         )
         sink = next((s["line"] for s in steps if s["kind"] == "sink"), finding.line)
         return render_block(items, code, sink_line=sink)

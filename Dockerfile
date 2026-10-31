@@ -13,7 +13,7 @@ COPY contracts ./contracts
 COPY replay ./replay
 COPY web ./web
 COPY demo_target ./demo_target
-RUN pip install --no-cache-dir ".[scan]" "flask>=3.0" "pytest>=8" \
+RUN pip install --no-cache-dir ".[scan,stretch]" "flask>=3.0" "pytest>=8" \
     && python -m bandit --version \
     && useradd --create-home --uid 10001 pulseguard
 USER pulseguard
