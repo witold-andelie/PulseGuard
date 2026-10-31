@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from pulseguard.agents.graph import GraphDeps
 from pulseguard.agents.runner import CaseNotAwaitingApproval, resume_case
 from pulseguard.contracts.validate import assert_payload
 from pulseguard.governance.approval import ApprovalError, record_decision
+from pulseguard.patching.history import FixHistoryStore
 from pulseguard.paths import default_db_path, replay_dir, web_dir
 from pulseguard.replay.store import RunStore, validate_run_id
 from pulseguard.replay.verify import verify_manifest
@@ -38,6 +40,10 @@ class DecisionIn(BaseModel):
     decision: str = Field(description="approve | reject")
     actor: str = Field(default="demo-visitor", max_length=80)
     comment: str = Field(default="", max_length=500)
+
+
+class RollbackIn(BaseModel):
+    actor: str = Field(default="security-engineer", max_length=80)
 
 
 def resolve_mode(value: str | None = None) -> str:
@@ -164,10 +170,21 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"case {case_id} not found")
         return case
 
+    def _rollback_view(case_id: str, runtime: dict[str, Any]) -> dict[str, Any]:
+        rolled = bool(runtime.get("rolled_back")) or any(
+            p.get("state") == "rolled_back" for p in store.list_patches(case_id))
+        available = bool(runtime.get("fix_snapshots")) and not rolled
+        return {"available": available, "rolled_back": rolled}
+
     @app.get("/api/cases/{case_id}")
     def get_case(case_id: str) -> dict[str, Any]:
         case = _case_or_404(case_id)
         runtime = store.get_runtime(case_id) or {}
+        skeptic = runtime.get("skeptic")
+        cf = runtime.get("counterfactual")
+        verification = runtime.get("verification")
+        blast = runtime.get("blast_radius")
+        policy = runtime.get("policy")
         return {
             "mode": info["mode"],
             "case": case,
@@ -179,6 +196,14 @@ def create_app(
             "review_status": runtime.get("review_status"),
             "review_reason": runtime.get("review_reason"),
             "bundle": runtime.get("bundle"),
+            "priority": case.get("priority"),
+            "verification": verification,
+            "skeptic": skeptic,
+            "counterfactual": cf,
+            "blast_radius": blast,
+            "policy": policy,
+            "bus_health": runtime.get("bus_health"),
+            "rollback": _rollback_view(case_id, runtime),
         }
 
     @app.get("/api/cases/{case_id}/trace", response_model=None)
@@ -212,6 +237,44 @@ def create_app(
                 "approval": status["values"]["approval"],
                 "awaiting_approval": status["awaiting_approval"],
                 "bundle": status["values"].get("bundle")}
+
+    @app.post("/api/cases/{case_id}/rollback")
+    def post_rollback(case_id: str, body: RollbackIn) -> dict[str, Any]:
+        _case_or_404(case_id)
+        if mode == "replay":
+            return {
+                "simulated": True,
+                "label": "REPLAY - simulated rollback; nothing was restored",
+                "rollback": {"available": False, "rolled_back": False, "simulated": True},
+            }
+        runtime = store.get_runtime(case_id) or {}
+        if runtime.get("rolled_back"):
+            raise HTTPException(status_code=409, detail="case already rolled back")
+        snapshots = runtime.get("fix_snapshots") or []
+        applied = (runtime.get("bundle") or {}).get("applied_target")
+        if not snapshots or not applied:
+            raise HTTPException(status_code=409, detail="no fix history for this case")
+        FixHistoryStore.restore(Path(applied), snapshots)
+        patches = store.list_patches(case_id)
+        if patches:
+            store.update_patch(patches[-1]["patch_id"], state="rolled_back")
+        case = store.get_case(case_id) or {}
+        store.add_event({
+            "case_id": case_id, "activity": "ROLLED_BACK",
+            "ts": datetime.now(UTC).isoformat(),
+            "resource": body.actor, "attributes": {
+                "run_mode": "LIVE", "priority": case.get("priority"),
+            },
+        })
+        patchset = dict(runtime.get("patchset") or {})
+        if patchset:
+            patchset["state"] = "rolled_back"
+        store.patch_runtime(case_id, rolled_back=True, patchset=patchset)
+        return {
+            "simulated": False,
+            "label": "LIVE rollback restored the bundle target",
+            "rollback": {"available": False, "rolled_back": True},
+        }
 
     @app.exception_handler(ValueError)
     async def _value_error(_: Request, exc: ValueError) -> JSONResponse:

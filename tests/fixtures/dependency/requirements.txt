@@ -1,0 +1,2 @@
+# SYNTHETIC fixture — not a real lockfile. PulseGuard scenario 2.
+demo-lib==1.2.3

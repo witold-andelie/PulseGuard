@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from pulseguard.agents.llm import LLMResponse
 from pulseguard.scanners.semgrep import DataflowTrace, SemgrepResult, TraceLine
@@ -76,3 +77,23 @@ class FakeScanner:
             return self.counts.pop(0)
         return int("conn.execute(q).fetchall()" in
                    (Path(target) / "routes.py").read_text(encoding="utf-8"))
+
+
+class EchoScanner:
+    """Reproduces ``finding['fingerprint']`` so verify's re-run check can pass in graph tests."""
+
+    def __init__(self, finding):
+        self.finding = finding
+        self.targets = []
+
+    def run(self, target):
+        self.targets.append(Path(target))
+        return [SimpleNamespace(fingerprint=self.finding["fingerprint"])]
+
+    def count(self, target, rule_id=None):
+        self.targets.append(Path(target))
+        return 1
+
+
+def low_verdict():
+    return verdict(0.1)

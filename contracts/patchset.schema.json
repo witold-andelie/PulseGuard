@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/witold-andelie/PulseGuard/contracts/patchset.schema.json",
   "title": "PatchSet",
-  "description": "Search/replace patch set (adapted from revio PatchSet). Doubles as the Remediator's structured-output schema. Max 3 attempts per case.",
+  "description": "Search/replace patch set (adapted from revio PatchSet). Doubles as the Remediator's structured-output schema. Max 3 attempts per case. S2 adds state rolled_back.",
   "type": "object",
   "required": ["ops", "rationale", "attempt"],
   "properties": {

@@ -1,0 +1,20 @@
+{
+  "fixture": "hand-written",
+  "note": "Hand-written service topology fixture for the demo order flow. Not extracted from an architecture image.",
+  "nodes": [
+    {"id": "api-gateway", "label": "API Gateway", "internet_facing": true, "sensitivity": "low"},
+    {"id": "order-api", "label": "Order API", "internet_facing": false, "sensitivity": "medium"},
+    {"id": "clearing-ledger-db", "label": "Clearing ledger DB", "internet_facing": false, "sensitivity": "high"},
+    {"id": "auth-service", "label": "Auth service", "internet_facing": false, "sensitivity": "medium"},
+    {"id": "market-data", "label": "Market data", "internet_facing": false, "sensitivity": "low"},
+    {"id": "internal-jobs", "label": "Internal jobs", "internet_facing": false, "sensitivity": "low"}
+  ],
+  "edges": [
+    {"from": "api-gateway", "to": "order-api", "privilege": 0.9, "sensitivity": 0.8},
+    {"from": "order-api", "to": "clearing-ledger-db", "privilege": 1.0, "sensitivity": 1.0},
+    {"from": "api-gateway", "to": "auth-service", "privilege": 0.5, "sensitivity": 0.5},
+    {"from": "auth-service", "to": "order-api", "privilege": 0.4, "sensitivity": 0.5},
+    {"from": "order-api", "to": "market-data", "privilege": 0.3, "sensitivity": 0.2},
+    {"from": "internal-jobs", "to": "order-api", "privilege": 0.2, "sensitivity": 0.2}
+  ]
+}

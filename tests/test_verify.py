@@ -1,0 +1,109 @@
+"""Named verify checks (revio grounding.py + tradepulse verify.py check() shape)."""
+
+from pathlib import Path
+
+from pulseguard.ingest import finding_from_trivy
+from pulseguard.scanners.trivy import TrivyReportLoader
+from pulseguard.verify import (
+    check_cited_cve,
+    check_cited_evidence,
+    check_cited_location,
+    check_patch_scope,
+    check_rerun_hash,
+    verify_finding,
+)
+from tests.fakes import EchoScanner
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_cited_evidence_pass_and_fail():
+    evidence = [{"evidence_id": "E1", "kind": "rule_source", "text": "x", "payload": {}}]
+    assert check_cited_evidence(["E1"], evidence)["ok"]
+    assert not check_cited_evidence(["E9"], evidence)["ok"]
+    assert not check_cited_evidence([], evidence)["ok"]
+
+
+def test_cited_location_pass_and_fail(tmp_path):
+    (tmp_path / "routes.py").write_text("a = 1\nb = 2\n", encoding="utf-8")
+    finding = {"file": "routes.py", "line": 1, "fingerprint": "a" * 16, "extra": {}}
+    evidence = [{"evidence_id": "E1", "kind": "rule_source", "text": "x",
+                 "payload": {"file": "routes.py", "line": 1, "source": "a = 1"}}]
+    assert check_cited_location(finding, ["E1"], evidence, tmp_path)["ok"]
+    evidence[0]["payload"]["source"] = "missing"
+    assert not check_cited_location(finding, ["E1"], evidence, tmp_path)["ok"]
+    escaped = [{"evidence_id": "E1", "kind": "rule_source", "text": "x",
+                "payload": {"file": "../secret.py", "line": 1, "source": "x"}}]
+    assert not check_cited_location(finding, ["E1"], escaped, tmp_path)["ok"]
+
+
+def test_cited_cve_pass_fail_and_none(tmp_path):
+    dest = tmp_path / "scan"
+    dest.mkdir()
+    src = FIXTURES / "dependency" / "scan" / "trivy-report.json"
+    (dest / "trivy-report.json").write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    finding = {
+        "file": "requirements.txt", "line": 0, "fingerprint": "a" * 16,
+        "cve_id": "CVE-2024-0001",
+        "extra": {"cve_id": "CVE-2024-0001", "report": "scan/trivy-report.json",
+                  "recorded": False},
+    }
+    evidence = [{"evidence_id": "E1", "kind": "rule_source", "text": "CVE-2024-0001",
+                 "payload": {"cve_id": "CVE-2024-0001"}}]
+    ok = check_cited_cve(finding, ["E1"], evidence, tmp_path)
+    assert ok["ok"]
+    assert "synthetic" in ok["detail"]
+    finding["cve_id"] = "CVE-1999-9999"
+    finding["extra"]["cve_id"] = "CVE-1999-9999"
+    evidence[0]["text"] = "CVE-1999-9999"
+    evidence[0]["payload"]["cve_id"] = "CVE-1999-9999"
+    assert not check_cited_cve(finding, ["E1"], evidence, tmp_path)["ok"]
+    clean = {"file": "routes.py", "line": 1, "fingerprint": "a" * 16, "extra": {}}
+    assert check_cited_cve(clean, ["E1"], [{"evidence_id": "E1", "kind": "rule_source",
+                                           "text": "x", "payload": {}}], tmp_path)["ok"]
+
+
+def test_patch_scope_code_and_dependency():
+    code = {"file": "routes.py", "scanner": "semgrep", "extra": {}, "trace": []}
+    assert check_patch_scope(
+        {"ops": [{"path": "routes.py", "old": "a", "new": "b"}]}, code)["ok"]
+    assert not check_patch_scope(
+        {"ops": [{"path": "other.py", "old": "a", "new": "b"}]}, code)["ok"]
+    dep = {"file": "requirements.txt", "scanner": "trivy",
+           "extra": {"kind": "dependency", "manifest": "requirements.txt"}}
+    assert check_patch_scope(
+        {"ops": [{"path": "requirements.txt", "old": "a==1", "new": "a==2"}]}, dep)["ok"]
+    assert not check_patch_scope(
+        {"ops": [{"path": "routes.py", "old": "a", "new": "b"}]}, dep)["ok"]
+
+
+def test_rerun_hash_injected_scanner_and_trivy(tmp_path):
+    finding = {"fingerprint": "ab" * 16, "file": "routes.py", "scanner": "semgrep", "extra": {}}
+    assert check_rerun_hash(finding, tmp_path, EchoScanner(finding))["ok"]
+    other = EchoScanner({**finding, "fingerprint": "cd" * 16})
+    assert not check_rerun_hash(finding, tmp_path, other)["ok"]
+    assert not check_rerun_hash(finding, tmp_path, None)["ok"]
+    report = FIXTURES / "dependency" / "scan" / "trivy-report.json"
+    (tmp_path / "scan").mkdir()
+    (tmp_path / "scan" / "trivy-report.json").write_text(report.read_text(encoding="utf-8"),
+                                                        encoding="utf-8")
+    vuln = TrivyReportLoader(tmp_path / "scan" / "trivy-report.json").vulnerabilities()[0]
+    dep = finding_from_trivy(vuln, recorded=False).to_payload()
+    assert check_rerun_hash(dep, tmp_path, None)["ok"]
+
+
+def test_verify_finding_ok_requires_every_check(tmp_path):
+    (tmp_path / "routes.py").write_text("sink()\n", encoding="utf-8")
+    finding = {
+        "file": "routes.py", "line": 1, "fingerprint": "ab" * 16, "scanner": "semgrep",
+        "extra": {}, "trace": [{"kind": "sink", "line": 1, "content": "sink()"}],
+    }
+    evidence = [{"evidence_id": "E1", "kind": "rule_source", "text": "x",
+                 "payload": {"file": "routes.py", "line": 1, "source": "sink()"}}]
+    report = verify_finding(
+        finding, evidence=evidence, cited=["E1"], target=tmp_path,
+        scanner=EchoScanner(finding),
+    )
+    assert report["ok"]
+    assert {c["name"] for c in report["checks"]} >= {
+        "cited_evidence", "cited_location", "cited_cve", "rerun_hash"}

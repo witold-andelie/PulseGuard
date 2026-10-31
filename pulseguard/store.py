@@ -302,11 +302,14 @@ class Store:
             row = conn.execute("SELECT state_json FROM runtime_state WHERE case_id = ?",
                                (case_id,)).fetchone()
             previous = json.loads(row[0]) if row else {}
+            closed = any(e.get("activity") == "CASE_CLOSED" for e in state.get("events", []))
+            priority = state.get("priority") or state.get("blast_radius", {}).get("priority")
             conn.execute(
-                "UPDATE cases SET finding_json = ?, state = ?, closed_at = "
+                "UPDATE cases SET finding_json = ?, state = ?, "
+                "priority = COALESCE(?, priority), closed_at = "
                 "CASE WHEN ? THEN COALESCE(closed_at, ?) ELSE closed_at END WHERE case_id = ?",
-                (json.dumps(finding), finding["state"],
-                 state.get("review_status") in ("closed", "dropped"), _now(), case_id))
+                (json.dumps(finding), finding["state"], priority,
+                 closed, _now(), case_id))
             for item in state.get("evidence", []):
                 conn.execute("INSERT OR REPLACE INTO evidence VALUES (?, ?, ?, ?)",
                              (item["evidence_id"], case_id, item["kind"],
@@ -328,18 +331,25 @@ class Store:
 
     @staticmethod
     def _sync_verdict(conn: sqlite3.Connection, case_id: str, state: dict[str, Any]) -> None:
-        verdict = state.get("verdict")
-        if not verdict:
-            return
-        assert_payload("verdict", verdict)
-        steps = {key: verdict[key] for key in STEP_KEYS}
-        steps.update(is_exploitable=verdict["is_exploitable"],
-                     model_metadata=state.get("verdict_metadata", {}))
-        conn.execute("INSERT INTO verdicts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                     "ON CONFLICT(verdict_id) DO UPDATE SET steps_json=excluded.steps_json",
-                     (f"V-{case_id}", case_id, verdict["role"], verdict["score"], verdict["band"],
-                      json.dumps(verdict["cited_evidence"]), json.dumps(steps),
-                      verdict["model"], _now()))
+        rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        if state.get("verdict"):
+            rows.append((state["verdict"], state.get("verdict_metadata") or {}))
+        if state.get("skeptic"):
+            rows.append((state["skeptic"], {}))
+        if state.get("counterfactual_verdict"):
+            rows.append((state["counterfactual_verdict"], {}))
+        for verdict, metadata in rows:
+            assert_payload("verdict", verdict)
+            steps = {key: verdict.get(key, "") for key in STEP_KEYS}
+            steps.update(is_exploitable=verdict.get("is_exploitable"), model_metadata=metadata)
+            role = verdict.get("role", "adjudicator")
+            conn.execute(
+                "INSERT INTO verdicts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(verdict_id) DO UPDATE SET steps_json=excluded.steps_json, "
+                "score=excluded.score, band=excluded.band",
+                (f"V-{case_id}-{role}", case_id, role, verdict["score"], verdict["band"],
+                 json.dumps(verdict.get("cited_evidence", [])), json.dumps(steps),
+                 verdict.get("model"), _now()))
 
     @staticmethod
     def _sync_patch(conn: sqlite3.Connection, case_id: str, state: dict[str, Any]) -> None:
@@ -412,6 +422,17 @@ class Store:
         return [dict(r) for r in rows]
 
     # ---------------------------------------------------------------- events
+    def patch_runtime(self, case_id: str, **fields: Any) -> dict[str, Any]:
+        """Merge ``fields`` into the materialised graph state."""
+        with self.connect() as conn:
+            row = conn.execute("SELECT state_json FROM runtime_state WHERE case_id = ?",
+                               (case_id,)).fetchone()
+            state = json.loads(row[0]) if row else {}
+            state.update(fields)
+            conn.execute("INSERT OR REPLACE INTO runtime_state VALUES (?, ?)",
+                         (case_id, json.dumps(state)))
+        return state
+
     def add_event(self, event: dict[str, Any]) -> int:
         event = {**event, "attributes": redact(event.get("attributes", {}))}
         assert_payload("event", {"seq": 0, **event})
@@ -421,6 +442,10 @@ class Store:
                 " VALUES (?, ?, ?, ?, ?)",
                 (event["case_id"], event["activity"], event["ts"], event["resource"],
                  json.dumps(event.get("attributes", {}))))
+            if event["activity"] == "CASE_CLOSED":
+                conn.execute(
+                    "UPDATE cases SET closed_at = COALESCE(closed_at, ?) WHERE case_id = ?",
+                    (_now(), event["case_id"]))
             return int(cur.lastrowid or 0)
 
     def list_events(self, case_id: str | None = None) -> list[dict[str, Any]]:

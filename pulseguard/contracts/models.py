@@ -22,7 +22,30 @@ class FindingState(StrEnum):
     UNCERTAIN = "uncertain"
     FALSE_POSITIVE = "false_positive"
     REMEDIATED = "remediated"
-    ESCALATED = "escalated"  # [S2] - present in the enum, not produced in S1
+    ESCALATED = "escalated"
+
+
+class Priority(StrEnum):
+    """Blast-radius priority (framework 3.1 / 5 Sprint 2)."""
+
+    P0 = "P0"
+    P1 = "P1"
+    P2 = "P2"
+    P3 = "P3"
+
+
+class BusHealth(StrEnum):
+    """Bus freshness (framework 3.1). Stale or stalled degrades policy to advise-only."""
+
+    FRESH = "fresh"
+    STALE = "stale"
+    STALLED = "stalled"
+
+
+class PolicyTier(StrEnum):
+    AUTO = "auto"
+    HUMAN = "human"
+    ADVISE_ONLY = "advise-only"
 
 
 Severity = Literal["info", "low", "medium", "high", "critical"]

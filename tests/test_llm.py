@@ -158,6 +158,9 @@ def test_off_extra_body_and_reasoning_usage():
     assert response.usage["opencode"] == {"cost": 0.001}
     assert all(response.usage[key] == value for key, value in completion()["usage"].items())
     assert response.metadata()["base_url_host"] == "local.test"
+    assert response.metadata()["structured_mode"] == "off"
+    assert response.metadata()["session_header_sent"] is False
+    assert "session_header" not in response.metadata()
 
 
 @pytest.mark.parametrize("extra", [
@@ -230,6 +233,26 @@ def test_case_role_session_stable_across_retries_and_patch_attempts(sample_findi
             f"pg-{finding.case_id}-remediator", f"pg-{finding.case_id}-remediator"]
     else:
         assert all("x-opencode-session" not in headers for headers, _ in calls)
+
+
+def test_session_header_flag_is_boolean_only():
+    captured = []
+
+    def handler(request):
+        captured.append(dict(request.headers))
+        return httpx.Response(200, json=completion())
+
+    adapter = client(handler, session_header="x-opencode-session")
+    meta = adapter.chat("s", "u", schema=output_schema("verdict"), session="pg-case-adjudicator"
+                        ).metadata()
+    assert meta["session_header_sent"] is True
+    dumped = json.dumps(meta)
+    assert "x-opencode-session" not in dumped
+    assert "pg-case-adjudicator" not in dumped
+    assert captured[0]["x-opencode-session"] == "pg-case-adjudicator"
+    silent = client(handler).chat("s", "u", schema=output_schema("verdict"),
+                                  session="pg-case-adjudicator").metadata()
+    assert silent["session_header_sent"] is False
 
 
 @pytest.mark.parametrize("mode", ["on", "off", "auto"])

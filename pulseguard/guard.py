@@ -7,12 +7,14 @@ here (S1). Destructive-remediation intents (delete, disable, widen permissions) 
 
 A quarantined finding is still a security case: the suspicious text is removed from every prompt,
 the case is flagged "suspected manipulation" and goes to human review (framework 3.1).
+S2 adds destructive-remediation intent rules applied to Remediator PatchSets before the sandbox.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 # (pattern name, compiled regex). Order is reporting order only.
 INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -37,6 +39,30 @@ INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         r"\b(approval|review|verification|sandbox|human|sign[\s-]?off)\b", re.I)),
     ("do_not_report", re.compile(
         r"\b(do\s*n[o']?t|never)\s+(report|flag|escalate|alert)\b", re.I)),
+]
+
+# Applied to remediator PatchSets (new text + rationale) before the sandbox. Not part of
+# the pre-prompt injection screen, so a finding that *is* a DROP TABLE bug is not quarantined.
+DESTRUCTIVE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("delete_file", re.compile(
+        r"\b(os\.remove|os\.unlink|shutil\.rmtree|pathlib\.Path\([^)]*\)\.unlink|"
+        r"rm\s+-rf)\b", re.I)),
+    ("drop_table", re.compile(r"\bDROP\s+TABLE\b", re.I)),
+    ("delete_rows", re.compile(r"\bDELETE\s+FROM\b", re.I)),
+    ("disable_auth", re.compile(
+        r"\b(disable|skip|bypass|turn\s+off|remove)\b[^\n]{0,40}\b"
+        r"(auth|authentication|authorization|login|permission)s?\b", re.I)),
+    ("disable_check", re.compile(
+        r"\b(disable|skip|bypass|remove|turn\s+off)\b[^\n]{0,40}\b"
+        r"(check|validation|verify|csrf|sanitizer|lint)s?\b", re.I)),
+    ("widen_acl", re.compile(
+        r"\b(chmod\s+0?777|0o777|chmod\(\s*[^,]+,\s*0o777|"
+        r"acl[^\n]{0,24}(allow|grant)[^\n]{0,24}(all|everyone|world|public)|"
+        r"umask\s+000)\b", re.I)),
+    ("tls_verify_off", re.compile(
+        r"\b(verify\s*=\s*False|VERIFY_NONE|check_hostname\s*=\s*False|"
+        r"NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['\"]?0|"
+        r"ssl\._create_unverified_context)\b")),
 ]
 
 
@@ -70,14 +96,8 @@ class GuardResult:
 
 
 def screen(text: str) -> GuardResult:
-    """Return every pattern hit in ``text`` (does not raise)."""
-    result = GuardResult()
-    for lineno, line in enumerate(text.splitlines() or [text], start=1):
-        for name, rx in INJECTION_PATTERNS:
-            m = rx.search(line)
-            if m:
-                result.matches.append(GuardMatch(name, lineno, line.strip()[:200]))
-    return result
+    """Return every injection-pattern hit in ``text`` (does not raise)."""
+    return _scan(text, INJECTION_PATTERNS)
 
 
 def assert_clean(text: str) -> str:
@@ -86,6 +106,26 @@ def assert_clean(text: str) -> str:
     if result.flagged:
         raise GuardRejection(result.matches)
     return text
+
+
+def _scan(text: str, patterns: list[tuple[str, re.Pattern[str]]]) -> GuardResult:
+    result = GuardResult()
+    for lineno, line in enumerate(text.splitlines() or [text], start=1):
+        for name, rx in patterns:
+            if rx.search(line):
+                result.matches.append(GuardMatch(name, lineno, line.strip()[:200]))
+    return result
+
+
+def screen_remediation(text: str) -> GuardResult:
+    """Screen a PatchSet's new text / rationale for destructive-remediation intents."""
+    return _scan(text, DESTRUCTIVE_PATTERNS)
+
+
+def screen_patchset(patchset: dict[str, Any]) -> GuardResult:
+    parts = [str(patchset.get("rationale") or "")]
+    parts.extend(str(op.get("new") or "") for op in patchset.get("ops") or [])
+    return screen_remediation("\n".join(parts))
 
 
 def strip_flagged_lines(text: str, placeholder: str = "[REMOVED BY GUARD]") -> str:

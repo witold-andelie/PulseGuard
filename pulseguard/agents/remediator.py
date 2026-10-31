@@ -21,7 +21,14 @@ MAX_ATTEMPTS = 3
 
 
 def validate_patch_scope(patchset: PatchSet, finding: Finding) -> None:
-    """S1 traces are intraprocedural: every step belongs to finding.file."""
+    """Code findings: every op stays on finding.file. Dependency findings: the manifest."""
+    extra = finding.extra or {}
+    if extra.get("kind") == "dependency" or finding.scanner == "trivy":
+        from pulseguard.verify import check_patch_scope
+        result = check_patch_scope(patchset.to_payload(), finding.to_payload())
+        if not result["ok"]:
+            raise PatchParseError(result["detail"])
+        return
     for op in patchset.ops:
         path = PurePosixPath(op.path)
         if (path.is_absolute() or PureWindowsPath(op.path).drive or "\\" in op.path

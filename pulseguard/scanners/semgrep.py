@@ -47,8 +47,23 @@ class DataflowTrace:
     intermediates: list[TraceLine] = field(default_factory=list)
     sink: TraceLine | None = None
 
+    def dedupe(self) -> DataflowTrace:
+        """Drop the source (and sink) line when Semgrep also lists it as an intermediate."""
+        skip = {tl.line for tl in (self.source, self.sink) if tl is not None}
+        seen: set[tuple[int, str]] = set()
+        unique: list[TraceLine] = []
+        for tl in self.intermediates:
+            key = (tl.line, tl.content)
+            if tl.line in skip or key in seen:
+                continue
+            seen.add(key)
+            unique.append(tl)
+        self.intermediates = unique
+        return self
+
     def steps(self) -> list[dict[str, Any]]:
         """Trace in the ``finding.schema.json`` ``trace`` shape (source first, sink last)."""
+        self.dedupe()
         out: list[dict[str, Any]] = []
         if self.source:
             out.append({"kind": "source", "line": self.source.line, "content": self.source.content})
@@ -108,7 +123,7 @@ def parse_dataflow_text(text: str) -> list[tuple[str, str, DataflowTrace]]:
         if current is not None:
             if current.sink is None and match_lines:
                 current.sink = match_lines[-1]
-            results.append((path, rule, current))
+            results.append((path, rule, current.dedupe()))
         current, match_lines = None, []
 
     for raw in text.splitlines():
@@ -179,7 +194,9 @@ def trace_from_json(extra: dict[str, Any]) -> DataflowTrace | None:
             )
         except (KeyError, TypeError, ValueError):
             continue
-    return trace if (trace.source or trace.sink) else None
+    if not (trace.source or trace.sink):
+        return None
+    return trace.dedupe()
 
 
 # --------------------------------------------------------------------------------- the runner

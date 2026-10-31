@@ -4,8 +4,8 @@ Built deterministically before any model call. Each item has an id the model mus
 Idea adapted from SymbAI-Taint
 ``src/symbolic_exec/constraint_extractor.py::build_semantic_evidence``
 (turning facts into statements the model cannot dismiss), applied to the Semgrep trace and
-sanitizer facts. S1 produces E1-E3; E4 exposure [S2], E5 PoC [S3], E6 constraint [ST-1] are not
-built here.
+sanitizer facts. S1 produces E1-E3; E4 exposure is added in S2 when an exposure line is supplied.
+E5 PoC [S3] and E6 constraint [ST-1] are not built here.
 """
 
 from __future__ import annotations
@@ -78,8 +78,10 @@ def sanitizer_facts(lines: Iterable[TraceLine]) -> list[tuple[str, int]]:
     return hits
 
 
-def build_hard_evidence(finding: Finding, trace: DataflowTrace | None) -> list[EvidenceItem]:
-    """Produce E1 (rule + source), E2 (dataflow), E3 (sanitizer facts) for one finding."""
+def build_hard_evidence(
+    finding: Finding, trace: DataflowTrace | None, *, exposure: str | None = None,
+) -> list[EvidenceItem]:
+    """Produce E1 (rule + source), E2 (dataflow), E3 (sanitizer facts), and E4 exposure [S2]."""
     trace = trace or DataflowTrace()
     items: list[EvidenceItem] = []
 
@@ -114,6 +116,11 @@ def build_hard_evidence(finding: Finding, trace: DataflowTrace | None) -> list[E
         payload={"checked": [n for n, _ in SANITIZER_RULES],
                  "matched": [{"rule": n, "line": ln} for n, ln in hits]},
     ))
+    if exposure:
+        items.append(EvidenceItem(
+            evidence_id="E4", kind="exposure", text=exposure,
+            payload={"fixture": "hand-written"},
+        ))
     return items
 
 
@@ -146,7 +153,7 @@ def code_excerpt(code: str, sink_line: int) -> str:
         for token in tokenize.generate_tokens(io.StringIO(code).readline):
             if token.type == tokenize.COMMENT:
                 row, column = token.start
-                comment = re.sub(r"#\s*@vuln\b.*", "", token.string)
+                comment = re.sub(r"#\s*@(?:vuln|safe)\b.*", "", token.string)
                 lines[row - 1] = (lines[row - 1][:column] + comment).rstrip()
             elif token.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.ENCODING,
                                     tokenize.ENDMARKER):

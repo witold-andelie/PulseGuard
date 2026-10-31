@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/witold-andelie/PulseGuard/contracts/finding.schema.json",
   "title": "Finding",
-  "description": "One security finding = one case. States per framework section 3.1 (S1 states plus S2 'escalated').",
+  "description": "One security finding = one case. States per framework section 3.1: raw, normalized, quarantined, confirmed, uncertain, false_positive, remediated, escalated [S2]. Priority P0..P3 and bus health live on the case / event attributes, not this payload.",
   "type": "object",
   "required": ["case_id", "fingerprint", "rule_id", "file", "line", "state", "evidence_ids"],
   "properties": {

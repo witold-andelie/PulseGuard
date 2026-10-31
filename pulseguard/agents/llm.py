@@ -114,11 +114,14 @@ class LLMResponse:
     base_url_host: str | None = None
     structured_mode: str | None = None
     structured_output: bool | None = None
+    session_header_sent: bool = False
 
     def metadata(self) -> dict[str, Any]:
+        # session_header_sent is a boolean only: never the header name or its value.
         return {
             "model": self.model, "base_url_host": self.base_url_host,
             "structured_mode": self.structured_mode, "structured_output": self.structured_output,
+            "session_header_sent": self.session_header_sent,
             "latency_ms": self.latency_ms, "usage": self.usage,
         }
 
@@ -159,7 +162,8 @@ class OpenAIChatClient:
         started = time.perf_counter()
         schema = model_facing_schema(schema)
         headers = {"User-Agent": self.config.user_agent}
-        if self.config.session_header and session:
+        session_header_sent = bool(self.config.session_header and session)
+        if session_header_sent:
             headers[self.config.session_header] = session
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -193,6 +197,7 @@ class OpenAIChatClient:
                     base_url_host=urlsplit(self.config.base_url).hostname,
                     structured_mode=self.config.structured,
                     structured_output=self._schema_supported,
+                    session_header_sent=session_header_sent,
                 )
             except APIStatusError as exc:
                 unsupported = exc.status_code in (400, 404, 422) and any(

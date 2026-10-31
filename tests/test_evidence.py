@@ -20,6 +20,15 @@ def test_sink_function_excerpt_has_real_lines_without_ground_truth():
     assert "# @vuln sqli" in code
 
 
+def test_safe_annotation_is_stripped_from_excerpt():
+    code = ("def order_by_number():\n"
+            "    number = int(request.args.get('n'))  # @safe int-cast\n"
+            "    sink(number)\n")
+    excerpt = code_excerpt(code, 3)
+    assert "# @safe" not in excerpt
+    assert "int(request.args.get('n'))" in excerpt
+
+
 def test_comment_annotations_only_and_innermost_async_function():
     code = ('"""Module ground truth"""\n'
             'def outer():\n'

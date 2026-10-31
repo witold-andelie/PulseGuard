@@ -35,9 +35,21 @@ class SecOpsState(TypedDict, total=False):
     evidence: list[dict[str, Any]]   # EvidenceItem dumps (E1..E3)
     evidence_block: str              # rendered Hard Evidence Block
 
-    verdict: dict[str, Any]          # Verdict payload
-    band: str                        # confirmed | uncertain | false_positive
+    verdict: dict[str, Any]          # Verdict payload (adjudicator)
+    band: str                        # confirmed | uncertain | false_positive | abstained
     verdict_metadata: dict[str, Any]
+    skeptic: dict[str, Any]
+    verification: dict[str, Any]
+    counterfactual: dict[str, Any]
+    counterfactual_verdict: dict[str, Any]
+    blast_radius: dict[str, Any]
+    priority: str                    # P0..P3
+    policy: dict[str, Any]
+    bus_health: str                  # fresh | stale | stalled
+    verified: bool
+    fix_snapshots: list[dict[str, str]]
+    rolled_back: bool
+    patch_rejected: bool
 
     patchset: dict[str, Any]         # PatchSet payload (latest attempt)
     attempt: int                     # remediation attempt counter, max 3

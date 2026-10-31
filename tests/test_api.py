@@ -61,6 +61,11 @@ def test_board_detail_trace_and_simulated_decisions(client):
         "decision": "approve", "actor": " ",
     }).status_code == 422
     assert client.get("/api/cases/missing").status_code == 404
+    rollback = client.post(path + "/rollback", json={"actor": "demo-visitor"})
+    assert rollback.status_code == 200
+    assert rollback.json()["simulated"] is True
+    assert "simulated" in rollback.json()["label"]
+    assert client.get(path).json() == before
 
 
 def test_static_ui_is_served(client):

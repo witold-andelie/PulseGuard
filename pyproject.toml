@@ -23,17 +23,20 @@ dependencies = [
 # Semgrep is invoked as a CLI subprocess, never imported.
 # Semgrep's pinned OpenTelemetry dependencies need a compatible FastAPI.
 scan = ["semgrep==1.183.0", "fastapi<0.142"]
-dev = ["pytest", "httpx", "ruff", "flask>=3.0"]
+dev = ["pytest", "httpx", "ruff", "flask>=3.0", "bandit"]
 
 [tool.setuptools.packages.find]
 include = ["pulseguard*"]
 
 [tool.setuptools.package-data]
-pulseguard = ["rules/semgrep/*.yaml"]
+pulseguard = ["rules/semgrep/*.yaml", "risk/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "demo_target/order_api/tests"]
-markers = ["semgrep: integration tests requiring a working local Semgrep CLI"]
+markers = [
+    "semgrep: integration tests requiring a working local Semgrep CLI",
+    "trivy: integration tests requiring a working local Trivy CLI",
+]
 
 [tool.ruff]
 line-length = 100
@@ -42,3 +45,6 @@ extend-exclude = [".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/fixtures/**" = ["F821", "I"]

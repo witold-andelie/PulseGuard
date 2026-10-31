@@ -1,0 +1,18 @@
+{
+  "PulseGuardFixture": "synthetic",
+  "Results": [
+    {
+      "Target": "requirements.txt",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-0001",
+          "PkgName": "demo-lib",
+          "InstalledVersion": "1.2.3",
+          "FixedVersion": "2.0.0",
+          "Severity": "MEDIUM",
+          "Title": "SYNTHETIC fixture CVE; not a real Trivy scan"
+        }
+      ]
+    }
+  ]
+}
