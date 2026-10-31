@@ -91,6 +91,12 @@ CREATE TABLE IF NOT EXISTS runtime_state (
 """
 
 STEP_KEYS = ("step1_dataflow", "step2_constraint", "step3_context", "step4_verdict")
+REPLAY_CONTEXT_KEYS = (
+    "evidence_block", "bundle", "review_status", "review_reason", "priority",
+    "verification", "skeptic", "counterfactual", "counterfactual_verdict", "poc",
+    "analysis_limits", "z3_veto", "blast_radius", "policy", "bus_health", "rollback",
+    "approval", "verdict_metadata", "model_calls", "topology_extraction",
+)
 
 
 def _now() -> str:
@@ -283,8 +289,8 @@ class Store:
         return json.loads(row[0]) if row else None
 
     def set_replay_context(self, case_id: str, case: dict[str, Any]) -> None:
-        """Retain the recorded code/evidence block and bundle for REPLAY detail views."""
-        context = {key: case[key] for key in ("evidence_block", "bundle") if key in case}
+        """Retain recorded detail fields; absent legacy fields remain absent."""
+        context = {key: case[key] for key in REPLAY_CONTEXT_KEYS if key in case}
         if context:
             with self.connect() as conn:
                 conn.execute("INSERT OR REPLACE INTO runtime_state VALUES (?, ?)",

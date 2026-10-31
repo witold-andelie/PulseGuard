@@ -16,12 +16,13 @@ from typing import Any
 
 from pulseguard.agents.llm import LLMConfig
 from pulseguard.agents.runner import resume_case
+from pulseguard.contracts.validate import assert_payload
 from pulseguard.env import load_env_file
 from pulseguard.paths import REPO_ROOT, default_db_path, replay_dir
 from pulseguard.replay.store import RunStore, validate_run_id
 from pulseguard.replay.verify import verify_manifest, write_manifest
 from pulseguard.run import live_run
-from pulseguard.store import Store
+from pulseguard.store import REPLAY_CONTEXT_KEYS, Store
 
 
 def _portable_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
@@ -37,22 +38,48 @@ def _json(path: Path, value: Any) -> None:
                     newline="\n")
 
 
+def _classify(status: dict[str, Any], *, allow_approval: bool = False) -> str:
+    """Only known terminal graph outcomes or a genuine approval interrupt can export."""
+    values = status["values"]
+    state = values.get("finding", {}).get("state")
+    review = values.get("review_status")
+    approval = values.get("approval") or {}
+    if approval.get("simulated") or str(values.get("mode", "")).lower() != "live":
+        raise ValueError("recording requires LIVE outcomes, never simulated approvals")
+    if status["awaiting_approval"]:
+        if (allow_approval and review == "awaiting_approval" and state == "confirmed"
+                and status.get("next") == ["approve"] and not approval
+                and not values.get("bundle")):
+            return "awaiting_approval"
+    elif not status.get("next"):
+        if (state == "remediated" and review == "closed" and values.get("bundle")
+                and approval.get("decision") == "approve"):
+            if (values.get("policy") or {}).get("tier") == "auto":
+                if approval.get("actor") != "policy:auto" or approval.get("policy_tier") != "auto":
+                    raise ValueError("policy approval must retain actor policy:auto and tier auto")
+            return "remediated"
+        if not values.get("bundle") and not approval:
+            if state == "false_positive" and review == "dropped":
+                return "dropped"
+            if state in ("quarantined", "escalated") and review == "human_review":
+                return state
+    raise ValueError(
+        f"unexpected or unfinished LIVE case state: {state!r}, review_status={review!r}")
+
+
 def write_recording(
     statuses: list[dict[str, Any]], *, root: Path, db_path: Path, run_id: str, model: str,
 ) -> Path:
-    """Export completed LIVE cases; callers must supply genuine model/scanner results."""
+    """Export terminal LIVE outcomes; callers must supply genuine model/scanner results."""
     validate_run_id(run_id)
     root = root.resolve()
-    if not statuses or any(
-        status["awaiting_approval"]
-        or status["values"].get("finding", {}).get("state") != "remediated"
-        or not status["values"].get("bundle")
-        or status["values"].get("approval", {}).get("simulated")
-        for status in statuses
-    ):
-        raise ValueError("recording requires completed, approved LIVE remediation bundles")
+    if not statuses:
+        raise ValueError("recording requires at least one terminal LIVE case")
     if any(status["values"].get("run_id") != run_id for status in statuses):
         raise ValueError("case already belongs to another run; use a fresh PG_DB_PATH")
+    for status in statuses:
+        _classify(status)
+        assert_payload("finding", status["values"]["finding"])
     target = root / "runs" / run_id
     if target.exists():
         raise ValueError(f"recording {run_id} already exists")
@@ -61,15 +88,20 @@ def write_recording(
     for status in statuses:
         state = status["values"]
         case_id = status["case_id"]
-        patches = store.list_patches(case_id)
+        context = {key: state[key] for key in REPLAY_CONTEXT_KEYS
+                   if key in state and key != "topology_extraction"}
+        case_row = store.get_case(case_id) or {}
         cases.append({
-            "finding": state["finding"], "evidence": state["evidence"],
-            "evidence_block": state["evidence_block"], "verdicts": [state["verdict"]],
-            "verdict_metadata": state.get("verdict_metadata", {}),
-            "model_calls": state.get("model_calls", []),
-            "patches": patches, "approvals": store.list_approvals(case_id),
-            "approval": state["approval"], "events": store.list_events(case_id),
-            "bundle": state["bundle"],
+            **context, "finding": state["finding"], "evidence": state.get("evidence", []),
+            "verdicts": [state[key] for key in ("verdict", "skeptic", "counterfactual_verdict")
+                         if state.get(key)],
+            "patches": store.list_patches(case_id), "approvals": store.list_approvals(case_id),
+            "events": store.list_events(case_id),
+            "created_at": case_row.get("created_at"),
+            # Preserve the view, never the source snapshots or applied host directory.
+            "rollback": {"available": bool(state.get("fix_snapshots"))
+                         and not state.get("rolled_back", False),
+                         "rolled_back": bool(state.get("rolled_back"))},
         })
     run = {
         "run_id": run_id, "mode": "LIVE", "recorded": True, "model": model,
@@ -78,6 +110,10 @@ def write_recording(
             "started_at", datetime.now(UTC).isoformat()),
         "cases": cases,
     }
+    topology = statuses[0]["values"].get("topology_extraction")
+    if topology is not None:
+        run["topology_extraction"] = topology
+        run["model_calls"] = topology.get("model_calls", [])
     # Build outside replay, so interrupted recordings cannot invalidate the existing manifest.
     staging = root.parent / f".{run_id}-staging-{uuid.uuid4().hex[:8]}"
     staging.mkdir(parents=True)
@@ -87,26 +123,32 @@ def write_recording(
             case_dir.mkdir()
             _json(case_dir / "case.json", case["finding"])
             _json(case_dir / "evidence.json", {
-                "items": case["evidence"], "block": case["evidence_block"],
+                "items": case["evidence"], "block": case.get("evidence_block"),
             })
             _json(case_dir / "verdicts.json", {
-                "verdicts": case["verdicts"], "model_metadata": case["verdict_metadata"],
+                "verdicts": case["verdicts"], "model_metadata": case.get("verdict_metadata", {}),
             })
             _json(case_dir / "patches.json", case["patches"])
-            _json(case_dir / "model_calls.json", case["model_calls"])
-            _json(case_dir / "approval.json", case["approval"])
+            _json(case_dir / "model_calls.json", case.get("model_calls", []))
+            _json(case_dir / "approval.json", case.get("approval"))
             (case_dir / "trace.jsonl").write_text(
                 "".join(json.dumps(event) + "\n" for event in case["events"]), encoding="utf-8",
                 newline="\n")
+            if not case.get("bundle"):
+                continue
             bundle_dir = case_dir / "bundle"
             bundle_dir.mkdir()
             source = Path(case["bundle"]["output_dir"])
             for name in ("patch.diff", "pr_description.md"):
-                shutil.copyfile(source / name, bundle_dir / name)
+                (bundle_dir / name).write_text(
+                    (source / name).read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
             # The published bundle must not carry host paths: point into the bundle itself.
             case["bundle"] = _portable_bundle(case["bundle"])
             metadata = json.loads((source / "metadata.json").read_text(encoding="utf-8"))
             _json(bundle_dir / "metadata.json", _portable_bundle(metadata))
+        if topology is not None:
+            _json(staging / "topology_extraction.json", topology)
+            _json(staging / "model_calls.json", run["model_calls"])
         _json(staging / "run.json", run)
         target.parent.mkdir(parents=True, exist_ok=True)
         staging.rename(target)
@@ -129,12 +171,16 @@ async def record(args: argparse.Namespace) -> Path:
     if (args.root / "runs" / run_id).exists():
         raise ValueError("run id already exists")
     statuses = await live_run(args.target, db_path=args.db_path, run_id=run_id)
-    completed = []
+    # Validate the entire batch before approving anything; unfinished cases need inspection.
     for status in statuses:
         if status["values"].get("run_id") != run_id:
             raise ValueError("case already belongs to another run; use a fresh PG_DB_PATH")
+        _classify(status, allow_approval=True)
+    completed = []
+    for status in statuses:
         if not status["awaiting_approval"]:
-            raise ValueError("LIVE case did not reach approval; inspect its trace before recording")
+            completed.append(status)
+            continue
         actor = args.auto_approve_as
         if not actor:
             answer = input(f"Approve {status['case_id']} after reviewing its sandbox? [yes/no] ")
@@ -142,7 +188,9 @@ async def record(args: argparse.Namespace) -> Path:
                 raise ValueError("recording cancelled; case remains paused")
             actor = input("Approver name: ").strip()
         completed.append(await resume_case(
-            status["case_id"], "approve", actor, db_path=args.db_path))
+            status["case_id"], "approve", actor, db_path=args.db_path,
+            comment="Recording approval (--auto-approve-as)" if args.auto_approve_as
+            else "Recording approval (interactive)"))
     return write_recording(
         completed, root=args.root, db_path=args.db_path, run_id=run_id, model=config.model)
 

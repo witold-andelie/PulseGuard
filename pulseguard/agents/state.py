@@ -48,6 +48,8 @@ class SecOpsState(TypedDict, total=False):
     priority: str                    # P0..P3
     policy: dict[str, Any]
     bus_health: str                  # fresh | stale | stalled
+    topology_extraction: dict[str, Any]  # run-level proposal/validation, never image bytes
+    z3_veto: str                     # not_applicable | passed | applied
     verified: bool
     fix_snapshots: list[dict[str, str]]
     rolled_back: bool

@@ -292,6 +292,7 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
             )
             return update
         z3_veto = "not_applicable"
+        update["z3_veto"] = z3_veto
         proof = next((item for item in state["evidence"]
                       if item["evidence_id"] == "E6"
                       and item.get("payload", {}).get("claim") is True
@@ -309,6 +310,7 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
                 update.update(
                     band="abstained", verdict=dict(state["verdict"], band="abstained"),
                     finding=dict(state["finding"], state="escalated"), verified=False,
+                    z3_veto="applied",
                     review_status="human_review", review_reason=reason,
                     events=[_ev(state, "ABSTAINED_ESCALATED", "verifier",
                                 reason=reason, check="z3_veto")],
@@ -316,6 +318,7 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
                 return update
             if dominance["dominates"]:
                 z3_veto = "passed"
+                update["z3_veto"] = z3_veto
         events.append(_ev(state, "VERIFIED", "verifier", ok=True,
                           score=state["verdict"].get("score"), z3_veto=z3_veto))
         if outcome == "false_positive":

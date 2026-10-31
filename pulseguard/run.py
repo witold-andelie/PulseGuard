@@ -110,7 +110,7 @@ async def live_run(
     scanners: Sequence[str] | None = None,
     topology_source: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Scan -> normalise -> publish/consume -> graph, pausing for every approval.
+    """Scan -> normalise -> publish/consume -> graph, pausing for human approvals.
 
     ``collectors`` add findings from the other scanners (default: bandit and the committed
     Trivy report); pass ``()`` to run on the injected Semgrep-style ``scanner`` only.
@@ -166,10 +166,13 @@ async def live_run(
             target_root=target, output_dir=output, llm=client, scanner=scanner,
             bus_health=watchdog.health(), topology=topology,
         )
-        status = await start_case({
+        state = {
             "finding": finding, "code": file.read_text(encoding="utf-8"),
             "run_id": run_id, "mode": "live", "bus_health": deps.bus_health,
-        }, deps, db_path)
+        }
+        if topology is not None:
+            state["topology_extraction"] = topology
+        status = await start_case(state, deps, db_path)
         statuses.append(status)
     return statuses
 

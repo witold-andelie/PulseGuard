@@ -28,7 +28,7 @@ _STATES = {
 
 
 def read_events(store: Store, mode: str | None = None) -> list[dict[str, Any]]:
-    """Snapshot events in sequence order; recover missing S1 run modes via the run relation.
+    """Snapshot events in sequence order, using the containing run's serving mode.
 
     Event-only fixtures work without cases or runs. API exports filter to the serving mode;
     they never relabel old REPLAY events as LIVE when a database is reused.
@@ -44,7 +44,9 @@ def read_events(store: Store, mode: str | None = None) -> list[dict[str, Any]]:
         event = dict(row)
         attributes = json.loads(event.pop("attributes_json"))
         stored_mode = event.pop("stored_mode")
-        event_mode = attributes.get("run_mode") or stored_mode
+        # Recorded LIVE events keep their provenance in storage, but belong to a REPLAY
+        # projection when served. Filtering on the original attribute would hide them all.
+        event_mode = stored_mode or attributes.get("run_mode")
         if mode and event_mode != mode.upper():
             continue
         event["attributes"] = {**attributes, "run_mode": event_mode}

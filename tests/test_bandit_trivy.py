@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -46,3 +47,20 @@ def test_real_trivy_if_installed(tmp_path):
     assert data["SchemaVersion"] == 2
     vulns = [v for r in data.get("Results") or [] for v in r.get("Vulnerabilities") or []]
     assert any(v["PkgName"] == "requests" for v in vulns)
+
+
+def test_trivy_smoke_honours_configured_binary(tmp_path, monkeypatch):
+    """The smoke test must use PG_TRIVY_BIN even when Trivy is absent from PATH."""
+    monkeypatch.setenv("PG_TRIVY_BIN", "configured-trivy")
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({
+            "SchemaVersion": 2, "Results": [{"Vulnerabilities": [{"PkgName": "requests"}]}],
+        }))
+
+    monkeypatch.setattr(subprocess, "run", run)
+    test_real_trivy_if_installed(tmp_path)
+    assert calls[0][0] == "configured-trivy"

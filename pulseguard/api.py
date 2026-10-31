@@ -106,7 +106,10 @@ def seed_from_replay(store: Store, run: dict[str, Any], manifest_sha256: str | N
                                a.get("policy_tier", "manual"), created_at=a.get("created_at"))
         for e in case.get("events", []):
             store.add_event(e)
-        store.set_replay_context(case_id, case)
+        context = dict(case)
+        if "topology_extraction" in run:
+            context["topology_extraction"] = run["topology_extraction"]
+        store.set_replay_context(case_id, context)
     return run_id
 
 
@@ -142,6 +145,8 @@ def create_app(
                 info["label"] = run.get("label")
                 info["recorded"] = bool(run.get("recorded"))
                 info["model"] = run.get("model")
+                info["topology_extraction"] = run.get("topology_extraction")
+                info["model_calls"] = run.get("model_calls", [])
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 info["replay_error"] = f"invalid replay run: {exc}"
         else:
@@ -241,7 +246,9 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"case {case_id} not found")
         return case
 
-    def _rollback_view(case_id: str, runtime: dict[str, Any]) -> dict[str, Any]:
+    def _rollback_view(case_id: str, runtime: dict[str, Any]) -> dict[str, Any] | None:
+        if mode == "replay":
+            return runtime.get("rollback")
         rolled = bool(runtime.get("rolled_back")) or any(
             p.get("state") == "rolled_back" for p in store.list_patches(case_id))
         available = bool(runtime.get("fix_snapshots")) and not rolled
@@ -273,6 +280,8 @@ def create_app(
             "skeptic": skeptic,
             "counterfactual": cf,
             "poc": runtime.get("poc"),
+            "z3_veto": runtime.get("z3_veto"),
+            "topology_extraction": runtime.get("topology_extraction"),
             "blast_radius": blast,
             "policy": policy,
             "bus_health": runtime.get("bus_health"),

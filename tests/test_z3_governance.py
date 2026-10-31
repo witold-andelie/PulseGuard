@@ -202,6 +202,7 @@ def run_graph(score=0.95, cited=None, bypass=None, name="alnum_unsat.py", bands=
 
 def test_unsat_veto_escalates_high_score_and_keeps_neural_score():
     state = run_graph()
+    assert state["z3_veto"] == "applied"
     assert state["finding"]["state"] == "escalated"
     assert state["band"] == state["verdict"]["band"] == "abstained"
     assert state["verdict"]["score"] == 0.95
@@ -230,6 +231,7 @@ def test_only_case_bound_witnessed_e5_overrides_veto(status, case_id, overrides)
     state = run_graph(bypass=[e5])
     assert state["finding"]["state"] == ("confirmed" if overrides else "escalated")
     if overrides:
+        assert state["z3_veto"] == "passed"
         assert state["events"][-1]["activity"] == "VERIFIED"
         assert state["events"][-1]["attributes"]["z3_veto"] == "passed"
 
@@ -247,6 +249,7 @@ def test_graph_veto_is_limited_to_dominating_unsat(name, expected):
     state = run_graph(name=name)
     assert state["finding"]["state"] == expected
     if expected == "confirmed":
+        assert state["z3_veto"] == "not_applicable"
         assert state["events"][-1]["activity"] == "VERIFIED"
         assert state["events"][-1]["attributes"]["z3_veto"] == "not_applicable"
 

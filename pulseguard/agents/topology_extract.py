@@ -50,13 +50,16 @@ def extract_topology(
     must be readable and valid. Without a source, structural validation still applies.
     """
     model = llm.model
+    metadata: dict[str, Any] = {"model": model}
     try:
         response = llm.chat(
             SYSTEM, f"Extract the attached service landscape. The scanned service is {service_id}.",
             schema=topology_schema(), images=[image], session=session,
         )
         model = response.model
+        metadata = response.metadata()
     except Exception as exc:
+        metadata.update(error_metadata(exc))
         reason = "vision_unsupported" if isinstance(exc, VisionUnsupportedError) else "model_error"
         validation = {"ok": False, "errors": [reason], "dot": {"status": "not_checked"},
                       "provider": error_metadata(exc)}
@@ -73,6 +76,8 @@ def extract_topology(
             validation = validate_topology(data, service_id=service_id, dot_path=source)
             if validation["ok"]:
                 return {"topology": {"nodes": data["nodes"], "edges": data["edges"]},
-                        "source": "extracted", "validation": validation, "model": model}
+                        "source": "extracted", "validation": validation, "model": model,
+                        "model_calls": [{"role": "topology", **metadata}]}
     return {"topology": load_topology().to_payload(), "source": "fixture",
-            "validation": validation, "model": model}
+            "validation": validation, "model": model,
+            "model_calls": [{"role": "topology", **metadata}]}

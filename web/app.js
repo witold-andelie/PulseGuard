@@ -54,7 +54,7 @@ const $ = (id) => document.getElementById(id);
 let modeInfo = null;
 let selected = null;
 let boardCases = [];
-let boardSort = { key: "case_id", dir: "asc" };
+let boardSort = { key: "state", dir: "asc" };
 let scannerFilter = "all";
 let lastAnnounced = "";
 
@@ -247,13 +247,9 @@ function renderMode() {
 }
 
 function boardCounts(cases) {
-  const counts = { remediated: 0, false_positive: 0, escalated: 0, quarantined: 0, other: 0 };
+  const counts = {};
   for (const item of cases) {
-    if (item.state === "remediated" || item.state === "confirmed") counts.remediated += 1;
-    else if (item.state === "false_positive") counts.false_positive += 1;
-    else if (item.state === "escalated" || item.state === "uncertain") counts.escalated += 1;
-    else if (item.state === "quarantined") counts.quarantined += 1;
-    else counts.other += 1;
+    counts[item.state] = (counts[item.state] || 0) + 1;
   }
   return counts;
 }
@@ -272,6 +268,9 @@ function filteredCases() {
   }
   const key = boardSort.key === "scanner" ? "scanner" : boardSort.key;
   rows.sort((a, b) => {
+    // Keep each final-state group together while sorting its cases by the chosen column.
+    const group = compareCases(a, b, "state", key === "state" ? boardSort.dir : "asc");
+    if (group) return group;
     const left = key === "scanner" ? scannerOf(a) : a[key];
     const right = key === "scanner" ? scannerOf(b) : b[key];
     return compareCases({ [key]: left }, { [key]: right }, key, boardSort.dir);
@@ -289,14 +288,9 @@ function renderBoard() {
   }
   const counts = boardCounts(boardCases);
   const metrics = element("dl", undefined, "metrics");
-  for (const [label, value] of [
-    ["Confirmed → remediated", counts.remediated],
-    ["Dropped as false positive", counts.false_positive],
-    ["Escalated / abstained", counts.escalated],
-    ["Quarantined", counts.quarantined],
-  ]) {
+  for (const [state, value] of Object.entries(counts)) {
     const cell = element("div");
-    cell.append(element("dt", label), element("dd", String(value)));
+    cell.append(element("dt", stateLabel(state)), element("dd", String(value)));
     metrics.append(cell);
   }
   root.append(metrics);
@@ -355,8 +349,15 @@ function renderBoard() {
   }
   thead.append(headRow);
   table.append(thead);
-  const body = element("tbody");
+  let body;
+  let groupState;
   for (const item of rows) {
+    if (!body || groupState !== item.state) {
+      groupState = item.state;
+      body = element("tbody");
+      body.setAttribute("aria-label", stateLabel(groupState));
+      table.append(body);
+    }
     const tr = element("tr");
     const th = element("th");
     th.scope = "row";
@@ -377,7 +378,6 @@ function renderBoard() {
     tr.append(st);
     body.append(tr);
   }
-  table.append(body);
   tableWrap.append(table);
   root.append(tableWrap);
 
@@ -389,7 +389,8 @@ function renderBoard() {
     card.append(element("strong", item.rule_id));
     card.append(element("span", item.case_id));
     card.append(element("span", item.file + ":" + item.line + " · " + scannerOf(item)));
-    card.append(element("span", priorityLabel(item.priority) + " · " + stateLabel(item.state)));
+    card.append(element("span", priorityLabel(item.priority), "priority " + (item.priority || "")));
+    card.append(element("span", stateLabel(item.state)));
     cards.append(card);
   }
   root.append(cards);
@@ -481,6 +482,14 @@ function renderBlastRadius(root, blast) {
   }
   view.append(element("p", "Priority " + recorded(blast.priority) + " · score " + recorded(blast.score)));
   if (blast.fixture) view.append(element("p", "Topology source: " + blast.fixture));
+  else if (blast.source) view.append(element("p", "Topology source: " + blast.source));
+  if (blast.validation) {
+    const validation = blast.validation;
+    view.append(element("p", "Image topology validation: " +
+      (validation.ok ? "passed" : "failed; fixture fallback") +
+      (validation.errors?.length ? " · " + validation.errors.join(", ") : "") +
+      " · diagram check: " + recorded(validation.dot?.status), validation.ok ? "passed" : "notice"));
+  }
   const path = blast.path || [];
   view.append(element("p", "Scored path: " + (path.map((step) =>
     step.node + " (edge weight " + step.edge_weight + ")").join(" → ") || MISSING)));
@@ -638,7 +647,7 @@ function z3Status(data) {
   const evidence = data.evidence || [];
   const e6 = evidence.find((item) => item.evidence_id === "E6");
   const limits = data.analysis_limits || [];
-  const veto = (data.verification?.checks || []).some((check) =>
+  const veto = data.z3_veto === "applied" || (data.verification?.checks || []).some((check) =>
     /E6|symbolic/i.test(check.name + check.detail) && !check.ok)
     || /contradicts symbolic evidence E6/i.test(JSON.stringify(data.review_reason || ""));
   if (veto) return { label: "Symbolic veto applied",
@@ -653,6 +662,8 @@ function z3Status(data) {
     return { label: "z3 did not claim",
       text: "The solver result is an analysis limit, not evidence of safety.", tone: "limit" };
   }
+  if (data.z3_veto) return { label: "Symbolic veto: " + data.z3_veto.replaceAll("_", " "),
+    text: "Recorded deterministic verifier status.", tone: "ok" };
   return null;
 }
 

@@ -12,6 +12,7 @@ from pulseguard.patching.sandbox import SandboxVerifier
 from pulseguard.paths import default_db_path
 from pulseguard.replay.record import main as record_main
 from pulseguard.replay.verify import verify_manifest
+from pulseguard.risk.blast_radius import load_topology
 from pulseguard.run import main as run_main
 from tests.fakes import PATCH, FakeScanner, verdict
 
@@ -55,14 +56,16 @@ def test_live_cli_env_file_loaded_before_run(tmp_path, monkeypatch, capsys):
     assert "live-test-secret" not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("topology_source", ["fixture", "image"])
 def test_recording_env_file_keeps_key_out_of_bundle_trace_and_metadata(tmp_path, monkeypatch,
-                                                                    capsys):
+                                                                    capsys, topology_source):
     secret = "test-only-credential-never-export"
     values = {
         "PG_MODEL_BASE_URL": f"https://user:{secret}@provider.test/v1?key={secret}",
         "PG_MODEL_NAME": "configured-test-model", "PG_MODEL_API_KEY": secret,
         "PG_MODEL_STRUCTURED": "off", "PG_MODEL_SESSION_HEADER": "x-opencode-session",
         "PG_DB_PATH": str(tmp_path / "recording.sqlite"),
+        "PG_TOPOLOGY_SOURCE": topology_source,
     }
     path = tmp_path / "record.env"
     path.write_text("\n".join(f"{key}={value}" for key, value in values.items()), encoding="utf-8")
@@ -75,7 +78,9 @@ def test_recording_env_file_keeps_key_out_of_bundle_trace_and_metadata(tmp_path,
         assert "response_format" not in kwargs
         system = kwargs["messages"][0]["content"]
         adj = sum(1 for item in calls if "Adjudicator" in item["messages"][0]["content"])
-        if "Remediator" in system:
+        if "extract service topology" in system:
+            payload = load_topology().to_payload()
+        elif "Remediator" in system:
             payload = PATCH
         elif "PoC" in system:
             payload = {"route": "/order", "params": {"id": "1' OR '1'='1"},
@@ -119,6 +124,13 @@ def test_recording_env_file_keeps_key_out_of_bundle_trace_and_metadata(tmp_path,
     assert metadata["latency_ms"] >= 0
     assert metadata["usage"]["opencode"] == {"cost": 0.001}
     assert len(case["model_calls"]) == 4
+    if topology_source == "image":
+        assert run["topology_extraction"]["source"] == "extracted"
+        assert run["model_calls"][0]["role"] == "topology"
+        assert run["model_calls"][0]["base_url_host"] == "provider.test"
+        assert run["model_calls"][0]["model"] == "actual-test-model"
+    else:
+        assert "topology_extraction" not in run
     assert metadata["session_header_sent"] is True
     assert all(call["usage"]["total_tokens"] == 150 for call in case["model_calls"])
     artifact_roots = [root, tmp_path / "pulseguard-bundles"]
@@ -126,4 +138,5 @@ def test_recording_env_file_keeps_key_out_of_bundle_trace_and_metadata(tmp_path,
         for artifact in artifact_root.rglob("*"):
             if artifact.is_file():
                 assert secret.encode() not in artifact.read_bytes(), artifact.name
+                assert b"data:image" not in artifact.read_bytes(), artifact.name
     assert secret not in (tmp_path / "recording.trace.jsonl").read_text()

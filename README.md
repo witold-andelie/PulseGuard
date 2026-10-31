@@ -212,25 +212,39 @@ REPLAY returns 404 for run endpoints; LIVE without a configured token returns 50
 credentials return 401. Render remains **REPLAY by default**, with `PG_LIVE_TOKEN` marked
 `sync: false`; this work does not change the deployed service or record a new replay.
 
-## Record a real run
+## How to record
 
-With all three PG_MODEL_* variables set and Semgrep working, choose a fresh database:
+Use the existing Python environment with Semgrep and Bandit available. Keep the env file
+outside the repository and set `PG_MODEL_BASE_URL`, `PG_MODEL_NAME`, `PG_MODEL_API_KEY` and
+`PG_TOPOLOGY_SOURCE=image` there. Recording runs Semgrep, Bandit and the committed recorded
+Trivy report on `demo_target/order_api`; it does not invoke a Trivy binary. Choose a fresh
+database for each run. From the repository root (`.venv/bin/python` on Linux/macOS):
 
-    .venv/Scripts/python scripts/record_run.py --db-path <fresh.sqlite> --auto-approve-as <actor>
-    .venv/Scripts/python scripts/record_run.py --env-file <config.env> --db-path <fresh.sqlite>
+    .venv/Scripts/python scripts/record_run.py --env-file <config.env> --db-path <fresh.sqlite> --auto-approve-as <actor>
     .venv/Scripts/python -m pulseguard.replay.verify
 
 `--auto-approve-as` is available **only to the recording command** and attributes the
-decision to the supplied actor. Without it, recording asks for an explicit interactive
-approval and approver name. The command refuses missing model configuration, failed gates,
-cases belonging to another run, and unfinished remediations.
+decision to the supplied actor with a recording-approval comment. Without it, recording
+asks for an interactive approval and approver name for each paused human approval.
+Policy-approved dependency cases retain `actor=policy:auto`; dropped false positives and
+quarantined/escalated cases retain their terminal outcome and human-review reason without
+a bundle. Unexpected or unfinished states, simulated approvals, missing model configuration
+and cases belonging to another run are refused.
 
-A successful recording writes `replay/runs/<run_id>/`: case, evidence, verdicts with provider
-model/host/structured-mode/latency/usage metadata (`model_calls.json` retains every attempt),
-all accepted patch attempts with sandbox reports, approval,
-trace JSONL and bundle files. It sets `recorded=true`, keeps the placeholder, regenerates
-`replay/manifest.sha256.json` and verifies every file. `--run-id` selects a run name;
-`--root` selects a replay directory. The recorder never substitutes fake model responses.
+A successful recording writes `replay/runs/<run_id>/` with every case, evidence (including
+the SQLi case's E5 PoC witness), adjudicator/skeptic/counterfactual verdicts, verification,
+analysis limits, z3 veto status, priority, blast radius, policy, bus health, rollback status,
+patch attempts with sandbox reports, approvals, review reasons and event traces. Bundle
+files are included only where remediation completed. Run-level topology extraction retains
+the model call metadata and deterministic validation result, never image bytes. Rejected
+image input or invalid topology selects the fixture and records the fallback reason.
+
+Files use LF and portable bundle paths; credentials and applied host directories are not
+exported. The command sets `recorded=true`, preserves both the S1 recording and placeholder,
+regenerates `replay/manifest.sha256.json` and verifies every file. The newest recorded run
+becomes the default REPLAY, with event-derived CSV/KPIs and simulated decisions/rollback.
+`--run-id` selects a run name; `--root` selects another replay directory. Scripted test runs
+stay in temporary directories; the recorder never substitutes fake model responses.
 
 ## Scanning and deployment
 
