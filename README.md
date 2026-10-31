@@ -238,6 +238,57 @@ Render configuration follows framework section 11.1. CI runs Ruff, pytest, contr
 and replay verification. S1 is live on Render; this S2 increment has not been deployed.
 The deliberately vulnerable Flask service uses a throwaway SQLite fixture in its tests.
 
+## Stretch: z3 constraint solving (ST-1)
+
+On the taint path inside the sink's function, PulseGuard extracts input validators
+(`re.fullmatch` / anchored `re.match`, `len(x) <= N`, and optionally `isdigit` /
+`isalnum`), records the exact source lines, and asks z3 whether a value that passes
+them can still contain a single quote.
+
+| Validator | Result |
+| --- | --- |
+| `^[A-Za-z0-9_-]{1,12}$` | unsat: a quote cannot pass |
+| `^[A-Za-z0-9_\\-' ]{1,32}$` | sat, witness `'` |
+| length ≤ 8 only | sat: `' OR 1=1` (8 characters) fits |
+| lookahead / backreference | unknown (no claim) |
+
+`unsat` is strong counter-evidence against SQLi through that parameter and is emitted
+as Hard Evidence item E6, for example
+`validator model: ^[0-9]{1,8}$ admits a quote? unsat`. `sat` yields a witness string
+that can seed a PoC. `unknown` is returned for any regex construct outside the small
+translated subset and makes no claim. The Verifier checks that the validator lines E6
+refers to exist in the target at those line numbers with that exact text.
+
+Labelled examples live in `demo_target/z3_cases/` and are **not** registered by the
+demo app. The graph hook (not applied in this worktree; see the merge note) is to pass
+`code=` into `build_hard_evidence` during evidence building, before adjudication.
+
+    .venv/Scripts/python -m pytest tests/test_z3_check.py -q
+
+Limits: Semgrep CE is intraprocedural, so source and sink must share a function. Only
+the regex subset above is modelled. A solver timeout is `unknown`. z3 is an optional
+extra (`pip install -e ".[z3]"`).
+
+## Stretch: MCP tool exposure (ST-4)
+
+`python -m pulseguard.mcp_server` (or the `pulseguard-mcp` script) serves FastMCP over
+stdio, following revio's MCP server pattern. Three tools:
+
+- `triage_finding(finding_json)` — validates `contracts/finding.schema.json`, runs the
+  guard and deterministic evidence building, returns the Hard Evidence Block. An
+  adjudicator verdict is included only when `PG_MODEL_*` is configured; otherwise the
+  tool says so and returns evidence only.
+- `get_case_evidence(case_id)` — evidence items, verdicts, verification and blast
+  radius from the SQLite store at `PG_DB_PATH`.
+- `request_approval(case_id, decision, actor)` — never applies a patch. In REPLAY the
+  request is simulated and labelled. In LIVE it records an `APPROVAL_REQUESTED` event
+  only; human approval stays in the existing approval flow.
+
+Invalid inputs are rejected. The tools do not open a shell or write files outside the
+store. Optional extra: `pip install -e ".[mcp]"`.
+
+    .venv/Scripts/python -m pulseguard.mcp_server
+
 ## Pre-existing components
 
 Module docstrings follow framework section 7: revio graph, runner, model, patch and store

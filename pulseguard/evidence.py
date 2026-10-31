@@ -5,7 +5,7 @@ Idea adapted from SymbAI-Taint
 ``src/symbolic_exec/constraint_extractor.py::build_semantic_evidence``
 (turning facts into statements the model cannot dismiss), applied to the Semgrep trace and
 sanitizer facts. S1 produces E1-E3; E4 exposure is added in S2 when an exposure line is supplied.
-E5 PoC [S3] and E6 constraint [ST-1] are not built here.
+E5 PoC [S3] is not built here. E6 constraint [ST-1] is appended when ``code`` is supplied.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import io
 import re
 import tokenize
 from collections.abc import Iterable
+from typing import Any
 
 from pulseguard.contracts.models import EvidenceItem, Finding
 from pulseguard.scanners.semgrep import DataflowTrace, TraceLine
@@ -78,10 +79,30 @@ def sanitizer_facts(lines: Iterable[TraceLine]) -> list[tuple[str, int]]:
     return hits
 
 
+def constraint_item(result: Any) -> EvidenceItem | None:
+    """Build E6 from a z3 :class:`~pulseguard.falsify.z3_check.ConstraintResult`.
+
+    No validators (and therefore ``unknown`` with an empty list) produce no item:
+    ``unknown`` makes no claim. A solved or unsupported-but-extracted validator is
+    rendered in the framework 4.2 wording, e.g.
+    ``validator model: ^[0-9]{1,8}$ admits a quote? unsat``.
+    """
+    if result is None or not getattr(result, "validators", None):
+        return None
+    needle = getattr(result, "needle", "'")
+    admits = "a quote" if needle == "'" else repr(needle)
+    model = getattr(result, "model", "") or "validators"
+    answer = getattr(result, "result", "unknown")
+    text = f"validator model: {model} admits {admits}? {answer}"
+    payload = result.to_dict() if hasattr(result, "to_dict") else {}
+    return EvidenceItem(evidence_id="E6", kind="constraint", text=text, payload=payload)
+
+
 def build_hard_evidence(
     finding: Finding, trace: DataflowTrace | None, *, exposure: str | None = None,
+    code: str | None = None, needle: str = "'",
 ) -> list[EvidenceItem]:
-    """Produce E1 (rule + source), E2 (dataflow), E3 (sanitizer facts), and E4 exposure [S2]."""
+    """Produce E1–E4 and, when ``code`` is given, E6 from validators on the taint path."""
     trace = trace or DataflowTrace()
     items: list[EvidenceItem] = []
 
@@ -121,6 +142,16 @@ def build_hard_evidence(
             evidence_id="E4", kind="exposure", text=exposure,
             payload={"fixture": "hand-written"},
         ))
+    if code:
+        from pulseguard.falsify.z3_check import check_validators
+        source_line = trace.source.line if trace.source else finding.line
+        sink_line = trace.sink.line if trace.sink else finding.line
+        item = constraint_item(check_validators(
+            code, source_line=source_line, sink_line=sink_line,
+            file=finding.file, needle=needle,
+        ))
+        if item:
+            items.append(item)
     return items
 
 

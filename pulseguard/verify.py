@@ -89,6 +89,42 @@ def check_cited_location(
     return _check("cited_location", True, "cited file/line exist and match the trace")
 
 
+def check_validator_lines(evidence: list[dict[str, Any]], target: Path) -> Check:
+    """E6 validator lines exist in the target at those line numbers with that exact text.
+
+    A proof about a wrongly extracted validator proves nothing (framework 6, ST-1).
+    No E6 item is a pass: there is no constraint claim to check.
+    """
+    items = [item for item in evidence
+             if item.get("evidence_id") == "E6" or item.get("kind") == "constraint"]
+    if not items:
+        return _check("validator_lines", True, "no constraint evidence")
+    for item in items:
+        rows = (item.get("payload") or {}).get("validators") or []
+        if not rows:
+            return _check("validator_lines", False, "E6 names no validator lines")
+        for row in rows:
+            file = str(row.get("file") or "")
+            try:
+                line = int(row.get("line") or 0)
+            except (TypeError, ValueError):
+                return _check("validator_lines", False, f"invalid validator line in {file}")
+            expected = str(row.get("text") or "")
+            path = _safe_join(target, file)
+            if path is None or not path.is_file():
+                return _check("validator_lines", False, f"{file} is not inside the target")
+            source = path.read_text(encoding="utf-8").splitlines()
+            if line < 1 or line > len(source):
+                return _check("validator_lines", False, f"{file}:{line} is out of range")
+            actual = source[line - 1]
+            if actual != expected:
+                return _check(
+                    "validator_lines", False,
+                    f"{file}:{line} does not match the extracted validator "
+                    f"({expected!r} vs {actual!r})")
+    return _check("validator_lines", True, "validator lines exist with the extracted text")
+
+
 def _cves_in(finding: dict[str, Any], cited: Iterable[str],
              evidence: list[dict[str, Any]]) -> set[str]:
     found: set[str] = set()
@@ -218,6 +254,7 @@ def verify_finding(
         check_cited_location(finding, cited, evidence, target),
         check_cited_cve(finding, cited, evidence, target),
         check_rerun_hash(finding, target, scanner),
+        check_validator_lines(evidence, target),
     ]
     if patchset:
         checks.append(check_patch_scope(patchset, finding))
