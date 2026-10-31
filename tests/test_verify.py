@@ -10,6 +10,7 @@ from pulseguard.verify import (
     check_cited_location,
     check_patch_scope,
     check_rerun_hash,
+    check_validator_lines,
     verify_finding,
 )
 from tests.fakes import EchoScanner
@@ -106,4 +107,5 @@ def test_verify_finding_ok_requires_every_check(tmp_path):
     )
     assert report["ok"]
     assert {c["name"] for c in report["checks"]} >= {
-        "cited_evidence", "cited_location", "cited_cve", "rerun_hash"}
+        "cited_evidence", "cited_location", "cited_cve", "rerun_hash", "validator_lines"}
+    assert check_validator_lines(evidence, tmp_path)["ok"]
