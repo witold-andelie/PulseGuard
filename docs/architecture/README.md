@@ -8,8 +8,8 @@ in the image. Blast-radius scores are prioritisation aids (framework section 15)
 
 Render from the repository root with Graphviz 14.1.5:
 
-```powershell
-& 'C:/Users/Administrator/Graphviz/bin/dot.exe' -Tpng docs/architecture/landscape.dot -o docs/architecture/landscape.png
+```sh
+dot -Tpng docs/architecture/landscape.dot -o docs/architecture/landscape.png
 ```
 
 The DOT fixes layout direction, fonts, spacing and DPI. Byte reproducibility requires
