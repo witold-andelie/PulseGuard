@@ -1,6 +1,7 @@
 """Real bandit on the demo target; real Trivy only when the binary is present."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -24,20 +25,24 @@ def test_bandit_flags_b608_on_demo_target():
 
 @pytest.mark.trivy
 def test_real_trivy_if_installed(tmp_path):
-    exe = shutil.which("trivy")
+    exe = os.environ.get("PG_TRIVY_BIN") or shutil.which("trivy")
     if exe is None:
-        pytest.skip("trivy executable not installed")
+        pytest.skip("trivy executable not installed (set PG_TRIVY_BIN)")
     target = tmp_path / "req"
     target.mkdir()
-    (target / "requirements.txt").write_text("flask>=3.0\n", encoding="utf-8")
-    proc = subprocess.run(
-        [exe, "fs", "--quiet", "--format", "json", "--exit-code", "0", str(target)],
-        capture_output=True, text=True, timeout=90, check=False,
-    )
+    # A pinned requirement: Trivy omits "Results" entirely when nothing resolves to a package.
+    (target / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+    cmd = [exe, "fs", "--quiet", "--format", "json", "--scanners", "vuln", "--exit-code", "0"]
+    if os.environ.get("PG_TRIVY_CACHE_DIR"):
+        cmd += ["--cache-dir", os.environ["PG_TRIVY_CACHE_DIR"]]
+    proc = subprocess.run(cmd + [str(target)], capture_output=True, text=True, timeout=180,
+                          check=False)
     if proc.returncode != 0 or not (proc.stdout or "").strip():
         pytest.skip(
             "trivy could not scan: "
             + ((proc.stderr or proc.stdout or str(proc.returncode)).splitlines() or ["?"])[-1]
         )
     data = json.loads(proc.stdout)
-    assert "Results" in data
+    assert data["SchemaVersion"] == 2
+    vulns = [v for r in data.get("Results") or [] for v in r.get("Vulnerabilities") or []]
+    assert any(v["PkgName"] == "requests" for v in vulns)
