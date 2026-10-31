@@ -3,39 +3,112 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="PulseGuard: the model proposes, deterministic checks try to falsify it. Nothing without hard evidence reaches remediation.">
   <title>PulseGuard · Case board</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to main content</a>
   <header>
-    <a class="brand" href="/">Pulse<span>Guard</span></a>
-    <span class="subtitle">Falsify before acting · Sprint 2</span>
-    <strong id="mode" class="badge">MODE UNAVAILABLE</strong>
+    <div class="brand-block">
+      <a class="brand" href="#board">Pulse<span>Guard</span></a>
+      <p class="tagline">The model proposes. Deterministic checks try to falsify it.</p>
+    </div>
+    <div id="run-context" class="mode-banner" role="region" aria-label="Run context">
+      <strong id="mode">MODE UNAVAILABLE</strong>
+      <p id="mode-detail">Waiting for run information.</p>
+    </div>
   </header>
-  <main>
-    <section class="intro">
-      <div><p class="eyebrow">INVESTIGATE → VERIFY → APPROVE</p><h1>Security case board</h1></div>
-      <button id="refresh" type="button">Refresh</button>
-    </section>
+  <nav aria-label="Views">
+    <a href="#board" data-nav="board">Case board</a>
+    <a href="#process" data-nav="process">Process and KPIs</a>
+    <a href="#how" data-nav="how">How it works</a>
+  </nav>
+  <main id="main">
     <p id="status" role="status" aria-live="polite">Loading source…</p>
-    <p class="notice">Policy governs approval: verified P2/P3 may be automatic, P0/P1 need a human,
-      and stale or stalled buses allow advice only. LIVE results use ephemeral storage.</p>
-    <nav aria-label="Views"><a href="#board">Cases</a><a href="#process">Process &amp; KPIs</a></nav>
-    <section id="board" aria-label="Cases grouped by state"></section>
-    <section id="detail" aria-label="Case detail" tabindex="-1">
-      <h2>Case detail</h2><p>Select a case to inspect its evidence, verdict and trace.</p>
+
+    <section id="view-board" class="view" data-view="board" aria-labelledby="heading-board">
+      <div class="page-title">
+        <div>
+          <p class="eyebrow">Investigate → verify → approve</p>
+          <h1 id="heading-board" tabindex="-1">Case board</h1>
+          <p class="lede">Nothing without hard evidence reaches remediation. Counts, priorities and scanners describe recorded outcomes; colour is never the only signal.</p>
+        </div>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+      <p class="notice">Policy governs approval: verified P2/P3 may be automatic, P0/P1 need a human, and a stale or stalled bus allows advice only. LIVE results use ephemeral storage.</p>
+      <div id="board"></div>
     </section>
-    <section id="process" aria-label="Process and KPIs">
-      <h2>Process &amp; KPIs</h2>
-      <p>Ingest → guard → evidence → adjudicate → challenge / verify → risk → sandbox → approval → close</p>
-      <p><a href="/api/eventlog.csv" download>Download event log CSV</a> ·
-        <a href="/api/kpis">KPI JSON</a></p>
-      <p class="notice">Computed from stored events in the displayed run mode. Rework means
-        SANDBOX_FAILED → PATCH_PROPOSED; its mean includes cases with zero loops.</p>
-      <div id="kpis" aria-live="polite">Loading process data…</div>
+
+    <section id="view-case" class="view" data-view="case" hidden aria-labelledby="heading-case">
+      <p><a class="text-link" href="#board">Back to case board</a></p>
+      <div id="detail">
+        <p class="eyebrow">Case</p>
+        <h1 id="heading-case" tabindex="-1">Case detail</h1>
+        <p>Select a case to inspect its evidence, verdict and trace.</p>
+      </div>
     </section>
-    <footer>Neural proposals. Deterministic checks. Governed remediation.</footer>
+
+    <section id="view-process" class="view" data-view="process" hidden aria-labelledby="heading-process">
+      <p class="eyebrow">Telemetry from stored events</p>
+      <h1 id="heading-process" tabindex="-1">Process and KPIs</h1>
+      <p class="lede">Ingest → guard → evidence → adjudicate → challenge / verify → risk → sandbox → approval → close. Figures always have a numeric table.</p>
+      <p><a href="/api/eventlog.csv" download>Download event log CSV</a>
+        · <a href="/api/kpis">KPI JSON</a></p>
+      <p class="notice">Computed from stored events in the displayed run mode. Rework means SANDBOX_FAILED → PATCH_PROPOSED; its mean includes cases with zero loops. Coverage of a check is not confidence in the verdict.</p>
+      <div id="kpis">Loading process data…</div>
+    </section>
+
+    <section id="view-how" class="view" data-view="how" hidden aria-labelledby="heading-how">
+      <p class="eyebrow">Product contract</p>
+      <h1 id="heading-how" tabindex="-1">How it works</h1>
+      <p class="lede">PulseGuard is a governed neuro-symbolic loop over a bundled Flask demo service. It is not a general SAST product and does not scan repositories you supply.</p>
+
+      <section>
+        <h2>Propose, then falsify</h2>
+        <p>A language model may propose an exploitability verdict, a patch, a PoC input or a service topology. Deterministic checks then try to falsify that proposal: taint traces, sanitizer facts, re-scan after patch, regression tests, evidence-citation checks, counterfactual consistency, a PoC witness, and (where extracted) a z3 validator proof. A check may veto a neural conclusion. It never invents a false-positive on its own.</p>
+      </section>
+
+      <section>
+        <h2>Hard evidence and analysis limits</h2>
+        <p>Before any model call the system builds a Hard Evidence Block. Only items that make a claim receive an E-id. The model must cite those ids.</p>
+        <ul>
+          <li><strong>E1</strong> — rule and source location</li>
+          <li><strong>E2</strong> — dataflow from source to sink</li>
+          <li><strong>E3</strong> — sanitizer rules on the path</li>
+          <li><strong>E4</strong> — exposure / blast-radius context</li>
+          <li><strong>E5</strong> — PoC witness (observable deviation before the patch, none after)</li>
+          <li><strong>E6</strong> — validator model (z3 sat / unsat)</li>
+        </ul>
+        <p>A check that ran but could not decide receives an <strong>L-id</strong> in a separate ANALYSIS LIMITS section. The UI labels it “Not covered (analysis limit)”. That is not “no risk” and it is not a pass. Citing an L-id invalidates the verdict.</p>
+      </section>
+
+      <section>
+        <h2>Governance tiers</h2>
+        <p>Verified P2/P3 findings may be approved automatically. P0/P1 always need a human. If the event bus is stale or stalled, policy is advice-only: no automatic approval. Remediation produces a bundle (patch + PR description), not a merge to a real Git remote.</p>
+      </section>
+
+      <section>
+        <h2>REPLAY and LIVE</h2>
+        <p><strong>REPLAY</strong> is the public default. The container verifies a sha256 manifest, seeds the case store from a recorded run, and makes no new model calls. Approve, reject and rollback are simulated and labelled. <strong>LIVE</strong> runs locally or behind a token on Render, scans only the bundled demo service, and loses results on restart.</p>
+      </section>
+
+      <section>
+        <h2>Documents in this repository</h2>
+        <ul>
+          <li><a href="https://github.com/witold-andelie/PulseGuard/blob/main/PULSEGUARD_FRAMEWORK.md">PULSEGUARD_FRAMEWORK.md</a> — principle, evidence model, governance, demo scenarios</li>
+          <li><a href="https://github.com/witold-andelie/PulseGuard/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a> — pipeline planes</li>
+          <li><a href="https://github.com/witold-andelie/PulseGuard/blob/main/docs/DEMO_SCRIPT.md">docs/DEMO_SCRIPT.md</a> — three-minute walkthrough</li>
+          <li><a href="https://github.com/witold-andelie/PulseGuard/blob/main/README.md">README.md</a> — how to run the service</li>
+        </ul>
+      </section>
+    </section>
   </main>
+  <footer>
+    <p>Neural proposals. Deterministic checks. Governed remediation.</p>
+    <p>Coverage is not confidence. Analysis limits are not “no risk”.</p>
+  </footer>
 </body>
 </html>

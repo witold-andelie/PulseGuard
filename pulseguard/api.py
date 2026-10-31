@@ -127,6 +127,7 @@ def create_app(
     info: dict[str, Any] = {
         "mode": mode.upper(), "run_id": None, "manifest_sha256": None,
         "replay_verified": None, "replay_error": None, "label": None, "recorded": None,
+        "model": None,
     }
     if mode == "replay":
         result = verify_manifest(replay_root)
@@ -140,6 +141,7 @@ def create_app(
                 info["run_id"] = seed_from_replay(store, run, result.manifest_sha256)
                 info["label"] = run.get("label")
                 info["recorded"] = bool(run.get("recorded"))
+                info["model"] = run.get("model")
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 info["replay_error"] = f"invalid replay run: {exc}"
         else:
