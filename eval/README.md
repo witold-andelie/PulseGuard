@@ -19,14 +19,10 @@ Thresholds remain at the framework defaults; no tuning claim is made.
 
 ## Run
 
-Use the shared interpreter, without creating a virtual environment here:
+From the repository root, with the project's virtual environment (see the main README):
 
 ```powershell
-$python = 'D:/AI_Models/hackson/PulseGuard/.venv/Scripts/python'
-$env:PYTHONPATH = (Get-Location).Path
-$env:PIP_CACHE_DIR = 'D:/AI_Models/hackson/_pulseguard_work/pip-cache'
-$env:TMP = 'D:/AI_Models/hackson/_pulseguard_work/tmp'
-$env:TEMP = $env:TMP
+$python = '.venv/Scripts/python'   # .venv/bin/python on Linux/macOS
 $env:PYTHONIOENCODING = 'utf-8'
 
 & $python -m eval.ablation --target demo_target --out eval/results --name deterministic
@@ -38,7 +34,7 @@ Missing scanners produce explicit **not run** rows and a nonzero exit status,
 while successful modes still produce reports. Missing LLM opt-in alone does not
 make the command fail. A successful scan with zero hits is a completed row.
 
-Bandit alone can run on this sandbox host:
+To run a single deterministic mode, for example Bandit only:
 
 ```powershell
 & $python -m eval.ablation --target demo_target --out eval/results/local-bandit --modes bandit
@@ -173,19 +169,6 @@ reason. The real Bandit integration test asserts the measured labelled confusion
 counts. Tests also cover annotation forms, exact scope/window/class matching,
 hand-computed metrics, report formatting, fake end-to-end modes, scanner misses,
 empty scans, duplicate hits, prompt hygiene and model failures.
-
-This restricted Windows session additionally needs external temporary-directory
-ACL compatibility for pytest's private temporary directories. The compatibility
-runner is outside the repository at
-`D:/AI_Models/hackson/_pulseguard_work/tools/s3_eval_runner.py`; it changes temporary
-directory creation only under the approved `TMP` and propagates to Python child
-processes. The test command used here is:
-
-```powershell
-$evalTestTemp = $env:TMP + '/s3-eval-full-' + [guid]::NewGuid().ToString('N')
-& $python D:/AI_Models/hackson/_pulseguard_work/tools/s3_eval_runner.py `
-    -m pytest -q -rs --tb=short -p no:cacheprovider --basetemp $evalTestTemp
-```
 
 The fixtures intentionally preserve `%` and `.format` SQL construction;
 `UP031`/`UP032` are suppressed locally in those three fixture files. Other Ruff
