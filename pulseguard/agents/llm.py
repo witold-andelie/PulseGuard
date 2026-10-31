@@ -5,11 +5,13 @@ Configuration comes exclusively from PG_MODEL_*; REPLAY never constructs this cl
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -22,6 +24,41 @@ UNSUPPORTED_SCHEMA_KEYWORDS = frozenset({
 SYSTEM_FIELDS = frozenset({
     "band", "role", "model", "case_id", "verdict_id", "created_at", "state",
 })
+MAX_IMAGE_BYTES = 4 * 1024 * 1024
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+
+
+class ImageInputError(ValueError):
+    """Image input is not PNG/JPEG or exceeds the 4 MiB request budget."""
+
+
+class VisionUnsupportedError(RuntimeError):
+    """The OpenAI-compatible endpoint rejected image content (framework section 12)."""
+
+    def __init__(self, status_code: int) -> None:
+        super().__init__("Provider does not support image input")
+        self.status_code = status_code
+
+
+def image_content_parts(images: list[Path]) -> list[dict[str, Any]]:
+    """Build revio-style chat content with bounded PNG/JPEG data URLs, without I/O to a model."""
+    parts = []
+    total = 0
+    for path in images:
+        mime = IMAGE_TYPES.get(path.suffix.lower())
+        if mime is None:
+            raise ImageInputError("Only PNG and JPEG images are supported")
+        with path.open("rb") as stream:
+            data = stream.read(MAX_IMAGE_BYTES - total + 1)
+        total += len(data)
+        if total > MAX_IMAGE_BYTES:
+            raise ImageInputError("Image input exceeds 4 MiB in total")
+        signature = b"\x89PNG\r\n\x1a\n" if mime == "image/png" else b"\xff\xd8\xff"
+        if not data.startswith(signature):
+            raise ImageInputError("Image content does not match its PNG/JPEG type")
+        encoded = base64.b64encode(data).decode("ascii")
+        parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}})
+    return parts
 
 
 def model_facing_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -134,6 +171,7 @@ class LLMClient(Protocol):
 
     def chat(
         self, system: str, user: str, *, schema: dict[str, Any], session: str | None = None,
+        images: list[Path] | None = None,
     ) -> LLMResponse: ...
 
 
@@ -156,11 +194,16 @@ class OpenAIChatClient:
 
     def chat(
         self, system: str, user: str, *, schema: dict[str, Any], session: str | None = None,
+        images: list[Path] | None = None,
     ) -> LLMResponse:
         from openai import APIConnectionError, APIStatusError, APITimeoutError
 
         started = time.perf_counter()
         schema = model_facing_schema(schema)
+        text = user + "\nReturn JSON matching:\n" + json.dumps(schema)
+        content: str | list[dict[str, Any]] = text
+        if images:
+            content = [{"type": "text", "text": text}, *image_content_parts(images)]
         headers = {"User-Agent": self.config.user_agent}
         session_header_sent = bool(self.config.session_header and session)
         if session_header_sent:
@@ -168,7 +211,7 @@ class OpenAIChatClient:
         kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {
-                "role": "user", "content": user + "\nReturn JSON matching:\n" + json.dumps(schema),
+                "role": "user", "content": content,
             }],
             "temperature": 0.0,
             "max_tokens": self.config.max_tokens,
@@ -200,6 +243,12 @@ class OpenAIChatClient:
                     session_header_sent=session_header_sent,
                 )
             except APIStatusError as exc:
+                if images and exc.status_code in (400, 404, 422) and any(
+                    word in str(exc).lower()
+                    for word in ("image", "vision", "content type", "content_type", "content-type")
+                ):
+                    # Do not retain provider messages, which can echo credentials or image bytes.
+                    raise VisionUnsupportedError(exc.status_code) from None
                 unsupported = exc.status_code in (400, 404, 422) and any(
                     word in str(exc).lower()
                     for word in ("response_format", "json_schema", "structured output", "grammar",

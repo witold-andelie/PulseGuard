@@ -36,8 +36,9 @@ class FakeLLM:
         self.responses = list(responses)
         self.calls = []
 
-    def chat(self, system, user, *, schema, session=None):
-        self.calls.append({"system": system, "user": user, "schema": schema, "session": session})
+    def chat(self, system, user, *, schema, session=None, images: list[Path] | None = None):
+        self.calls.append({"system": system, "user": user, "schema": schema, "session": session,
+                           "images": list(images) if images is not None else None})
         if not self.responses:
             raise AssertionError("unexpected model call")
         response = self.responses.pop(0)
