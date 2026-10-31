@@ -24,6 +24,7 @@ dependencies = [
 # Semgrep's pinned OpenTelemetry dependencies need a compatible FastAPI.
 scan = ["semgrep==1.183.0", "fastapi<0.142", "bandit>=1.8,<2"]
 dev = ["pytest", "httpx", "ruff", "flask>=3.0", "bandit>=1.8,<2"]
+stream = ["confluent-kafka>=2.6,<3", "fastavro>=1.10,<2"]
 
 [tool.setuptools.packages.find]
 include = ["pulseguard*"]

@@ -1,0 +1,83 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "127.0.0.1:19092:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.8.0
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      SERVER_LISTENPORT: "8080"
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/admin/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+  pulseguard:
+    build:
+      context: .
+      # The existing Render Dockerfile stays unchanged; stream dependencies live in this stage.
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8000
+        WORKDIR /app
+        COPY pyproject.toml README.md ./
+        COPY pulseguard ./pulseguard
+        COPY contracts ./contracts
+        COPY replay ./replay
+        COPY web ./web
+        COPY demo_target ./demo_target
+        RUN pip install --no-cache-dir ".[scan,stream]" -r demo_target/order_api/requirements.txt \
+            && useradd --create-home --uid 10001 pulseguard
+        USER pulseguard
+        EXPOSE 8000
+        CMD ["uvicorn", "pulseguard.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      PG_MODE: ${PG_MODE:-replay}
+      # Reserved selection setting: current live_run still constructs InMemoryBus directly.
+      # Wiring this opt-in to the runner is planned; see docs/ARCHITECTURE.md.
+      PG_BUS: ${PG_BUS:-memory}
+      PG_REDPANDA_BOOTSTRAP_SERVERS: redpanda:9092
+      PG_DB_PATH: /tmp/pulseguard.sqlite
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).close()"
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+volumes:
+  redpanda-data:
