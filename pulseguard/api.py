@@ -11,16 +11,17 @@ Run: ``uvicorn pulseguard.api:create_app --factory --port $PORT``
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from pulseguard import __version__
 from pulseguard.agents.graph import GraphDeps
@@ -32,6 +33,14 @@ from pulseguard.patching.history import FixHistoryStore
 from pulseguard.paths import default_db_path, replay_dir, web_dir
 from pulseguard.replay.store import RunStore, validate_run_id
 from pulseguard.replay.verify import verify_manifest
+from pulseguard.run import (
+    ALLOWED_SCANNERS,
+    LIVE_LABEL,
+    LiveRunner,
+    LiveRuns,
+    RunBusy,
+    RunRateLimited,
+)
 from pulseguard.store import Store
 
 MODES = ("replay", "live")
@@ -45,6 +54,14 @@ class DecisionIn(BaseModel):
 
 class RollbackIn(BaseModel):
     actor: str = Field(default="security-engineer", max_length=80)
+
+
+class RunIn(BaseModel):
+    """S3 accepts scanner selection only; callers cannot select targets or model options."""
+
+    model_config = ConfigDict(extra="forbid")
+    scanners: list[str] = Field(default_factory=lambda: list(ALLOWED_SCANNERS),
+                                min_length=1, max_length=3)
 
 
 def resolve_mode(value: str | None = None) -> str:
@@ -100,6 +117,7 @@ def create_app(
     replay_root: str | Path | None = None,
     web_root: str | Path | None = None,
     live_deps: GraphDeps | None = None,
+    live_runner: LiveRunner | None = None,
 ) -> FastAPI:
     mode = resolve_mode(mode)
     app = FastAPI(title="PulseGuard", version=__version__)
@@ -129,10 +147,18 @@ def create_app(
                 f"hash mismatch: mismatched={result.mismatched} missing={result.missing} "
                 f"unlisted={result.unlisted}")
     else:
-        info["label"] = "LIVE (local). Start scans with python -m pulseguard.run."
+        info["label"] = f"LIVE token-gated demo. {LIVE_LABEL}"
+        info["ephemeral"] = True
+
+    if live_runner is None:
+        from pulseguard.run import live_run
+        live_runner = live_run
+    live_runs = LiveRuns(live_runner, store.db_path)
+    live_token = os.environ.get("PG_LIVE_TOKEN", "")
 
     app.state.store = store
     app.state.info = info
+    app.state.live_runs = live_runs
     app.include_router(eventlog_router)
 
     @app.get("/health")
@@ -149,12 +175,53 @@ def create_app(
         current = dict(info)
         if mode == "live":
             runs = [run for run in store.list_runs() if run["mode"] == "LIVE"]
-            current["run_id"] = runs[-1]["run_id"] if runs else None
+            if live_runs.runs:
+                current["run_id"] = next(reversed(live_runs.runs))
+            else:
+                current["run_id"] = runs[-1]["run_id"] if runs else None
         return current
 
     def require_ready() -> None:
         if info["replay_error"]:
             raise HTTPException(status_code=503, detail=info["replay_error"])
+
+    def require_live_token(request: Request) -> None:
+        if mode != "live":
+            raise HTTPException(status_code=404, detail="not found")
+        if not live_token:
+            raise HTTPException(status_code=503, detail="LIVE runs require PG_LIVE_TOKEN")
+        scheme, _, credential = request.headers.get("Authorization", "").partition(" ")
+        matches = hmac.compare_digest(credential.encode("utf-8"), live_token.encode("utf-8"))
+        if scheme.lower() != "bearer" or not matches:
+            raise HTTPException(status_code=401, detail="invalid bearer token",
+                                headers={"WWW-Authenticate": "Bearer"})
+
+    @app.post("/api/runs", status_code=202, dependencies=[Depends(require_live_token)])
+    async def post_run(request: Request) -> dict[str, Any]:
+        # Authenticate even malformed requests before parsing their body.
+        try:
+            body = RunIn.model_validate_json(await request.body() or b"{}")
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422, detail="body may only select scanners from semgrep, bandit, trivy",
+            ) from exc
+        try:
+            return live_runs.start(body.scanners)
+        except RunBusy as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RunRateLimited as exc:
+            raise HTTPException(status_code=429, detail=str(exc),
+                                headers={"Retry-After": "60"}) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/runs/{run_id}", dependencies=[Depends(require_live_token)])
+    async def get_run(run_id: str) -> dict[str, Any]:
+        row = live_runs.runs.get(run_id)
+        if row is None:
+            raise HTTPException(status_code=404,
+                                detail="run not found (LIVE results are ephemeral)")
+        return dict(row)
 
     @app.get("/api/cases")
     def list_cases(state: str | None = None) -> dict[str, Any]:
@@ -202,6 +269,7 @@ def create_app(
             "verification": verification,
             "skeptic": skeptic,
             "counterfactual": cf,
+            "poc": runtime.get("poc"),
             "blast_radius": blast,
             "policy": policy,
             "bus_health": runtime.get("bus_health"),

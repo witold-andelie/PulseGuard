@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PoCProposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["route", "params", "expected_max_rows", "rationale"],
+  "properties": {
+    "route": {"type": "string", "pattern": "^/[A-Za-z0-9_/-]*$", "maxLength": 128},
+    "params": {
+      "type": "object",
+      "maxProperties": 8,
+      "propertyNames": {"pattern": "^[A-Za-z0-9_]{1,64}$"},
+      "additionalProperties": {"type": "string", "maxLength": 512}
+    },
+    "expected_max_rows": {"type": "integer", "minimum": 0, "maximum": 100},
+    "rationale": {"type": "string", "minLength": 1, "maxLength": 1000}
+  }
+}

@@ -1,8 +1,8 @@
-"""S2 case graph adapted from revio ``src/revio/agent/graph.py``.
+"""S3 case graph adapted from revio ``src/revio/agent/graph.py``.
 
 Guard → evidence (E1–E4) → adjudicate → (uncertain → skeptic) → verify → blast radius
 → remediate (LLM) or deterministic bump → screen destructive intent → sandbox
-→ counterfactual (code only) → policy → approval (auto or interrupt) → bundle.
+→ counterfactual + PoC witness (code only) → policy → approval (auto or interrupt) → bundle.
 Max 3 remediation attempts. Rollback is available after an applied LIVE bundle.
 """
 
@@ -30,8 +30,9 @@ from pulseguard.agents.skeptic import abstained_verdict, challenge, resolution
 from pulseguard.agents.state import SecOpsState
 from pulseguard.contracts.models import Finding
 from pulseguard.contracts.validate import assert_payload
-from pulseguard.evidence import build_hard_evidence, render_block
+from pulseguard.evidence import CODE_HEADER, build_hard_evidence, render_block
 from pulseguard.falsify.counterfactual import consistent
+from pulseguard.falsify.poc import witness
 from pulseguard.governance.approval import Approval, make_request, record_decision
 from pulseguard.governance.policy import decide as policy_decide
 from pulseguard.patching.bump import deterministic_bump
@@ -413,6 +414,31 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
             "review_reason": decision.reason if decision.tier != "auto" else "",
         }
 
+    def poc(state: SecOpsState) -> dict[str, Any]:
+        metadata: dict[str, Any] = {}
+        result = witness(
+            target_root(state), PatchSet.from_payload(state["patchset"]), state["evidence_block"],
+            case_id=state["case_id"], llm=deps.llm, metadata=metadata,
+        )
+        item = {"evidence_id": "E5", "kind": "poc", "text": result["detail"], "payload": result}
+        items = [it for it in state["evidence"] if it["evidence_id"] != "E5"] + [item]
+        finding = dict(state["finding"], evidence_ids=[it["evidence_id"] for it in items])
+        events = [_ev(state, "VERIFIED", "poc", check="poc_witness", **result)]
+        update: dict[str, Any] = {
+            "poc": result, "evidence": items, "finding": finding,
+            "evidence_block": state["evidence_block"].replace(
+                CODE_HEADER, f"[E5] {result['detail']}\n{CODE_HEADER}", 1),
+            "model_calls": [{"role": "poc", **metadata}] if metadata else [],
+            "events": events,
+        }
+        if result["status"] == "failed":
+            finding["state"] = "escalated"
+            update.update(verified=False, review_status="human_review",
+                          review_reason=result["detail"])
+            events.append(_ev(state, "ABSTAINED_ESCALATED", "poc", check="poc_witness",
+                              reason=result["detail"]))
+        return update
+
     def auto_approve(state: SecOpsState) -> dict[str, Any]:
         approval = Approval(
             case_id=state["case_id"], decision="approve", actor="policy:auto",
@@ -514,7 +540,7 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
             return "policy" if _is_dependency(state) else "counterfactual"
         return "remediate" if state["attempt"] < MAX_ATTEMPTS else END
 
-    def after_counterfactual(state: SecOpsState) -> str:
+    def after_poc(state: SecOpsState) -> str:
         if state["finding"]["state"] == "escalated":
             return END
         return "policy"
@@ -529,7 +555,7 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         ("guard", guard), ("evidence", evidence), ("adjudicate", adjudicate),
         ("skeptic", skeptic_node), ("verify", verify), ("blast", blast),
         ("remediate", remediate), ("screen_patch", screen_patch), ("sandbox", sandbox),
-        ("counterfactual", counterfactual), ("policy", policy),
+        ("counterfactual", counterfactual), ("poc", poc), ("policy", policy),
         ("auto_approve", auto_approve), ("request_approval", request_approval),
         ("approve", approve), ("bundle", bundle),
     ]:
@@ -547,7 +573,8 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
     graph.add_conditional_edges("screen_patch", after_screen, ["sandbox", END])
     graph.add_conditional_edges(
         "sandbox", after_sandbox, ["remediate", "counterfactual", "policy", END])
-    graph.add_conditional_edges("counterfactual", after_counterfactual, ["policy", END])
+    graph.add_edge("counterfactual", "poc")
+    graph.add_conditional_edges("poc", after_poc, ["policy", END])
     graph.add_conditional_edges("policy", after_policy, ["auto_approve", "request_approval"])
     graph.add_edge("auto_approve", "bundle")
     graph.add_edge("request_approval", "approve")

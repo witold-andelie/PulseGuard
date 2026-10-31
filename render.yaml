@@ -19,5 +19,5 @@ services:
         sync: false
       - key: PG_MODEL_API_KEY
         sync: false
-      - key: PG_LIVE_TOKEN        # required for LIVE runs [S3]
+      - key: PG_LIVE_TOKEN        # Bearer token for POST/GET /api/runs; required in LIVE [S3]
         sync: false

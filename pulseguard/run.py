@@ -1,7 +1,7 @@
 """Local LIVE entry point using revio ``src/revio/agent/runner.py`` and
 quant-foundation-gat ``src/quant_alpha/streaming/demo_signals.py`` patterns.
 
-No API run-start endpoint is exposed in S1. Approval can be resumed by this CLI or the local API.
+S3 adds a bounded API run coordinator. Approval can be resumed by this CLI or the API.
 """
 
 from __future__ import annotations
@@ -9,8 +9,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections import deque
+from collections.abc import Awaitable, Callable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,12 +31,80 @@ from pulseguard.scanners.semgrep import SemgrepRunner
 from pulseguard.scanners.trivy import TrivyReportLoader
 
 Collector = Callable[[Path], list[dict[str, Any]]]
+ALLOWED_SCANNERS = ("semgrep", "bandit", "trivy")
+LIVE_LABEL = "LIVE results are lost on restart."
+LiveRunner = Callable[..., Awaitable[list[dict[str, Any]]]]
+
+
+class RunBusy(ValueError):
+    """One API scan already occupies this process."""
+
+
+class RunRateLimited(ValueError):
+    """The per-process run-start budget is exhausted."""
+
+
+class LiveRuns:
+    """In-memory S3 run status and admission policy, owned by one API process.
+
+    All admission operations run without an await on the API event loop. Scanner work is
+    delegated by live_run to threads. Retain at most twenty statuses and three starts/minute.
+    """
+
+    def __init__(self, runner: LiveRunner, db_path: Path) -> None:
+        self.runner = runner
+        self.db_path = db_path
+        self.runs: dict[str, dict[str, Any]] = {}
+        self.starts: deque[float] = deque()
+        self.task: asyncio.Task[None] | None = None
+
+    def start(self, scanners: Sequence[str]) -> dict[str, Any]:
+        if self.task is not None and not self.task.done():
+            raise RunBusy("a LIVE run is already busy")
+        now = time.monotonic()
+        while self.starts and now - self.starts[0] >= 60:
+            self.starts.popleft()
+        if len(self.starts) >= 3:
+            raise RunRateLimited("at most three LIVE runs per minute per process")
+        if not scanners or len(set(scanners)) != len(scanners) or any(
+            name not in ALLOWED_SCANNERS for name in scanners
+        ):
+            raise ValueError("choose unique scanners from semgrep, bandit, trivy")
+        self.starts.append(now)
+        run_id = f"live-{uuid.uuid4().hex[:12]}"
+        row: dict[str, Any] = {
+            "run_id": run_id, "status": "running", "scanners": list(scanners),
+            "case_ids": [], "started_at": datetime.now(UTC).isoformat(), "finished_at": None,
+            "ephemeral": True, "label": LIVE_LABEL,
+        }
+        self.runs[run_id] = row
+        while len(self.runs) > 20:
+            del self.runs[next(iter(self.runs))]
+        self.task = asyncio.create_task(self._execute(row))
+        return dict(row)
+
+    async def _execute(self, row: dict[str, Any]) -> None:
+        try:
+            results = await self.runner(
+                REPO_ROOT / "demo_target" / "order_api", db_path=self.db_path,
+                run_id=row["run_id"], scanners=tuple(row["scanners"]),
+            )
+            row.update(status="completed", case_ids=[result["case_id"] for result in results])
+        except asyncio.CancelledError:
+            row.update(status="failed", error="run interrupted")
+            raise
+        except Exception:
+            # Provider errors may echo credentials. Return no exception text or request data.
+            row.update(status="failed", error="LIVE run failed; inspect local scanner/model setup")
+        finally:
+            row["finished_at"] = datetime.now(UTC).isoformat()
 
 
 async def live_run(
     target: Path, *, db_path: Path | None = None, output_dir: Path | None = None,
     llm: LLMClient | None = None, scanner: Any = None, run_id: str | None = None,
     collectors: Sequence[Collector] | None = None,
+    scanners: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Scan -> normalise -> publish/consume -> graph, pausing for every approval.
 
@@ -42,14 +113,23 @@ async def live_run(
     """
     target = target.resolve()
     if target != (REPO_ROOT / "demo_target" / "order_api").resolve():
-        raise ValueError("S1 LIVE scanning is limited to demo_target/order_api")
+        raise ValueError("LIVE scanning is limited to demo_target/order_api")
+    selected = tuple(ALLOWED_SCANNERS if scanners is None else scanners)
+    if not selected or len(set(selected)) != len(selected) or any(
+        name not in ALLOWED_SCANNERS for name in selected
+    ):
+        raise ValueError("choose unique scanners from semgrep, bandit, trivy")
     client = llm or make_llm()
     scanner = scanner or SemgrepRunner(timeout=45.0)
     db_path = db_path or default_db_path()
     run_id = run_id or f"live-{uuid.uuid4().hex[:12]}"
-    results = await asyncio.to_thread(scanner.run, target)
+    results = await asyncio.to_thread(scanner.run, target) if "semgrep" in selected else []
     payloads = [normalize(result, root=target).to_payload() for result in results]
-    for collect in (DEFAULT_COLLECTORS if collectors is None else collectors):
+    defaults = tuple(collect for name, collect in (
+        ("bandit", bandit_findings), ("trivy", trivy_findings)) if name in selected)
+    if scanners is None:
+        defaults = DEFAULT_COLLECTORS
+    for collect in (defaults if collectors is None else collectors):
         payloads.extend(await asyncio.to_thread(collect, target))
     payloads = merge_findings(group_dependency_findings(payloads))
     bus = InMemoryBus()

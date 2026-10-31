@@ -42,6 +42,7 @@ class SecOpsState(TypedDict, total=False):
     verification: dict[str, Any]
     counterfactual: dict[str, Any]
     counterfactual_verdict: dict[str, Any]
+    poc: dict[str, Any]               # bounded demo-only before/after PoC witness [S3]
     blast_radius: dict[str, Any]
     priority: str                    # P0..P3
     policy: dict[str, Any]
