@@ -1,0 +1,869 @@
+{
+  "summary": {
+    "sites": 27,
+    "vulnerable": 14,
+    "safe": 13,
+    "by_class": {
+      "dependency": {
+        "sites": 1,
+        "vulnerable": 1,
+        "safe": 0
+      },
+      "prompt-injection": {
+        "sites": 1,
+        "vulnerable": 1,
+        "safe": 0
+      },
+      "sqli": {
+        "sites": 25,
+        "vulnerable": 12,
+        "safe": 13
+      }
+    }
+  },
+  "modes": {
+    "semgrep": {
+      "status": "completed",
+      "reason": null,
+      "metrics": {
+        "tp": 11,
+        "fp": 4,
+        "fn": 3,
+        "tn": 9,
+        "precision": 0.7333333333333333,
+        "recall": 0.7857142857142857,
+        "f1": 0.7586206896551724,
+        "fp_rate": 0.3076923076923077,
+        "fn_rate": 0.21428571428571427
+      },
+      "by_class": {
+        "dependency": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "fp_rate": 0.0,
+          "fn_rate": 1.0
+        },
+        "prompt-injection": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "fp_rate": 0.0,
+          "fn_rate": 1.0
+        },
+        "sqli": {
+          "tp": 11,
+          "fp": 4,
+          "fn": 1,
+          "tn": 9,
+          "precision": 0.7333333333333333,
+          "recall": 0.9166666666666666,
+          "f1": 0.8148148148148148,
+          "fp_rate": 0.3076923076923077,
+          "fn_rate": 0.08333333333333333
+        }
+      },
+      "flagged_sites": [
+        "eval_cases/constraints.py:48:sqli",
+        "eval_cases/constraints.py:58:sqli",
+        "eval_cases/constraints.py:67:sqli",
+        "eval_cases/constraints.py:75:sqli",
+        "eval_cases/constraints.py:83:sqli",
+        "eval_cases/control_flow.py:23:sqli",
+        "eval_cases/control_flow.py:32:sqli",
+        "eval_cases/control_flow.py:49:sqli",
+        "eval_cases/query_forms.py:22:sqli",
+        "eval_cases/query_forms.py:30:sqli",
+        "eval_cases/query_forms.py:38:sqli",
+        "eval_cases/query_forms.py:46:sqli",
+        "eval_cases/query_forms.py:54:sqli",
+        "eval_cases/query_forms.py:62:sqli",
+        "order_api/routes.py:38:sqli"
+      ],
+      "candidates": 15,
+      "model_calls": 0,
+      "model_failures": 0,
+      "decisions": []
+    },
+    "bandit": {
+      "status": "completed",
+      "reason": null,
+      "metrics": {
+        "tp": 12,
+        "fp": 11,
+        "fn": 2,
+        "tn": 2,
+        "precision": 0.5217391304347826,
+        "recall": 0.8571428571428571,
+        "f1": 0.6486486486486487,
+        "fp_rate": 0.8461538461538461,
+        "fn_rate": 0.14285714285714285
+      },
+      "by_class": {
+        "dependency": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "fp_rate": 0.0,
+          "fn_rate": 1.0
+        },
+        "prompt-injection": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "fp_rate": 0.0,
+          "fn_rate": 1.0
+        },
+        "sqli": {
+          "tp": 12,
+          "fp": 11,
+          "fn": 0,
+          "tn": 2,
+          "precision": 0.5217391304347826,
+          "recall": 1.0,
+          "f1": 0.6857142857142857,
+          "fp_rate": 0.8461538461538461,
+          "fn_rate": 0.0
+        }
+      },
+      "flagged_sites": [
+        "eval_cases/constraints.py:21:sqli",
+        "eval_cases/constraints.py:29:sqli",
+        "eval_cases/constraints.py:37:sqli",
+        "eval_cases/constraints.py:48:sqli",
+        "eval_cases/constraints.py:58:sqli",
+        "eval_cases/constraints.py:67:sqli",
+        "eval_cases/constraints.py:75:sqli",
+        "eval_cases/constraints.py:83:sqli",
+        "eval_cases/control_flow.py:23:sqli",
+        "eval_cases/control_flow.py:32:sqli",
+        "eval_cases/control_flow.py:40:sqli",
+        "eval_cases/control_flow.py:49:sqli",
+        "eval_cases/control_flow.py:59:sqli",
+        "eval_cases/control_flow.py:68:sqli",
+        "eval_cases/query_forms.py:22:sqli",
+        "eval_cases/query_forms.py:30:sqli",
+        "eval_cases/query_forms.py:38:sqli",
+        "eval_cases/query_forms.py:46:sqli",
+        "eval_cases/query_forms.py:54:sqli",
+        "eval_cases/query_forms.py:62:sqli",
+        "order_api/order_note.py:23:sqli",
+        "order_api/routes.py:38:sqli",
+        "order_api/routes.py:51:sqli"
+      ],
+      "candidates": 34,
+      "model_calls": 0,
+      "model_failures": 0,
+      "decisions": []
+    }
+  },
+  "schema_version": 1,
+  "generated_at": "2026-10-31T21:16:54.586649+00:00",
+  "target": "demo_target",
+  "configuration": {
+    "python": "3.12.13",
+    "line_window": 12,
+    "llm_threshold": 0.7,
+    "bands": {
+      "confirmed_at": 0.7,
+      "uncertain_at": 0.3
+    },
+    "model": null,
+    "scanner_union": [
+      "semgrep",
+      "bandit"
+    ],
+    "trivy": "not included in these four modes"
+  },
+  "scanners": {
+    "semgrep": {
+      "status": "completed",
+      "version": "1.183.0",
+      "runner": "SemgrepRunner",
+      "hits": 15,
+      "matched_hits": 15,
+      "unmatched_hits": 0,
+      "findings": [
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 48,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/constraints.py:48:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 58,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/constraints.py:58:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 67,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/constraints.py:67:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 75,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/constraints.py:75:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 83,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/constraints.py:83:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 23,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/control_flow.py:23:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 32,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/control_flow.py:32:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 49,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/control_flow.py:49:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 22,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/query_forms.py:22:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 30,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/query_forms.py:30:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 38,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/query_forms.py:38:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 46,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/query_forms.py:46:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 54,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/query_forms.py:54:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 62,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/query_forms.py:62:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "order_api/routes.py",
+          "line": 38,
+          "rule": "flask-sqli-taint",
+          "site": "order_api/routes.py:38:sqli",
+          "trace_available": true
+        }
+      ]
+    },
+    "bandit": {
+      "status": "completed",
+      "version": "1.9.4",
+      "runner": "BanditRunner",
+      "hits": 34,
+      "matched_hits": 23,
+      "unmatched_hits": 11,
+      "findings": [
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 19,
+          "rule": "B608",
+          "site": "eval_cases/constraints.py:21:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 27,
+          "rule": "B608",
+          "site": "eval_cases/constraints.py:29:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 35,
+          "rule": "B608",
+          "site": "eval_cases/constraints.py:37:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 46,
+          "rule": "B608",
+          "site": "eval_cases/constraints.py:48:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 56,
+          "rule": "B608",
+          "site": "eval_cases/constraints.py:58:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 65,
+          "rule": "B608",
+          "site": "eval_cases/constraints.py:67:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 73,
+          "rule": "B608",
+          "site": "eval_cases/constraints.py:75:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/constraints.py",
+          "line": 81,
+          "rule": "B608",
+          "site": "eval_cases/constraints.py:83:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 21,
+          "rule": "B608",
+          "site": "eval_cases/control_flow.py:23:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 30,
+          "rule": "B608",
+          "site": "eval_cases/control_flow.py:32:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 38,
+          "rule": "B608",
+          "site": "eval_cases/control_flow.py:40:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 48,
+          "rule": "B608",
+          "site": "eval_cases/control_flow.py:49:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 58,
+          "rule": "B608",
+          "site": "eval_cases/control_flow.py:59:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/control_flow.py",
+          "line": 66,
+          "rule": "B608",
+          "site": "eval_cases/control_flow.py:68:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 20,
+          "rule": "B608",
+          "site": "eval_cases/query_forms.py:22:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 28,
+          "rule": "B608",
+          "site": "eval_cases/query_forms.py:30:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 36,
+          "rule": "B608",
+          "site": "eval_cases/query_forms.py:38:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 44,
+          "rule": "B608",
+          "site": "eval_cases/query_forms.py:46:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 52,
+          "rule": "B608",
+          "site": "eval_cases/query_forms.py:54:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/query_forms.py",
+          "line": 60,
+          "rule": "B608",
+          "site": "eval_cases/query_forms.py:62:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "order_api/order_note.py",
+          "line": 21,
+          "rule": "B608",
+          "site": "order_api/order_note.py:23:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "order_api/routes.py",
+          "line": 36,
+          "rule": "B608",
+          "site": "order_api/routes.py:38:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "order_api/routes.py",
+          "line": 49,
+          "rule": "B608",
+          "site": "order_api/routes.py:51:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 32,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 33,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 34,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 35,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 40,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 41,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 42,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 43,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 44,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 49,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        },
+        {
+          "file": "order_api/tests/test_routes.py",
+          "line": 51,
+          "rule": "B101",
+          "site": null,
+          "trace_available": false
+        }
+      ]
+    }
+  },
+  "sites": [
+    {
+      "id": "eval_cases/constraints.py:21:sqli",
+      "file": "eval_cases/constraints.py",
+      "line": 21,
+      "function": "integer_text",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: int-cast",
+      "start_line": 16,
+      "end_line": 21
+    },
+    {
+      "id": "eval_cases/constraints.py:29:sqli",
+      "file": "eval_cases/constraints.py",
+      "line": 29,
+      "function": "integer_format",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: int-cast before f-string",
+      "start_line": 24,
+      "end_line": 29
+    },
+    {
+      "id": "eval_cases/constraints.py:37:sqli",
+      "file": "eval_cases/constraints.py",
+      "line": 37,
+      "function": "integer_percent",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: integer format",
+      "start_line": 32,
+      "end_line": 37
+    },
+    {
+      "id": "eval_cases/constraints.py:48:sqli",
+      "file": "eval_cases/constraints.py",
+      "line": 48,
+      "function": "column_choice",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: finite allow-list",
+      "start_line": 40,
+      "end_line": 48
+    },
+    {
+      "id": "eval_cases/constraints.py:58:sqli",
+      "file": "eval_cases/constraints.py",
+      "line": 58,
+      "function": "sort_choice",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: finite direction allow-list",
+      "start_line": 51,
+      "end_line": 58
+    },
+    {
+      "id": "eval_cases/constraints.py:67:sqli",
+      "file": "eval_cases/constraints.py",
+      "line": 67,
+      "function": "mapped_choice",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: map to fixed identifiers",
+      "start_line": 61,
+      "end_line": 67
+    },
+    {
+      "id": "eval_cases/constraints.py:75:sqli",
+      "file": "eval_cases/constraints.py",
+      "line": 75,
+      "function": "sanitized_lookup",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: misleading sanitizer name",
+      "start_line": 70,
+      "end_line": 75
+    },
+    {
+      "id": "eval_cases/constraints.py:83:sqli",
+      "file": "eval_cases/constraints.py",
+      "line": 83,
+      "function": "trimmed_lookup",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: strip is not SQL sanitisation",
+      "start_line": 78,
+      "end_line": 83
+    },
+    {
+      "id": "eval_cases/control_flow.py:23:sqli",
+      "file": "eval_cases/control_flow.py",
+      "line": 23,
+      "function": "reviewed_lookup",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: deceptive reviewer comment",
+      "start_line": 17,
+      "end_line": 23
+    },
+    {
+      "id": "eval_cases/control_flow.py:32:sqli",
+      "file": "eval_cases/control_flow.py",
+      "line": 32,
+      "function": "documented_lookup",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: unsupported safety claim",
+      "start_line": 26,
+      "end_line": 32
+    },
+    {
+      "id": "eval_cases/control_flow.py:40:sqli",
+      "file": "eval_cases/control_flow.py",
+      "line": 40,
+      "function": "bounded_lookup",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: length bound admits SQL quotes",
+      "start_line": 35,
+      "end_line": 40
+    },
+    {
+      "id": "eval_cases/control_flow.py:49:sqli",
+      "file": "eval_cases/control_flow.py",
+      "line": 49,
+      "function": "disabled_lookup",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: unreachable constant-false branch",
+      "start_line": 43,
+      "end_line": 50
+    },
+    {
+      "id": "eval_cases/control_flow.py:59:sqli",
+      "file": "eval_cases/control_flow.py",
+      "line": 59,
+      "function": "retired_lookup",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: unreachable after unconditional return",
+      "start_line": 53,
+      "end_line": 59
+    },
+    {
+      "id": "eval_cases/control_flow.py:68:sqli",
+      "file": "eval_cases/control_flow.py",
+      "line": 68,
+      "function": "reviewed_bound_lookup",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: bound despite comment",
+      "start_line": 62,
+      "end_line": 68
+    },
+    {
+      "id": "eval_cases/query_forms.py:22:sqli",
+      "file": "eval_cases/query_forms.py",
+      "line": 22,
+      "function": "by_name",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: f-string",
+      "start_line": 17,
+      "end_line": 22
+    },
+    {
+      "id": "eval_cases/query_forms.py:30:sqli",
+      "file": "eval_cases/query_forms.py",
+      "line": 30,
+      "function": "by_reference",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: percent formatting",
+      "start_line": 25,
+      "end_line": 30
+    },
+    {
+      "id": "eval_cases/query_forms.py:38:sqli",
+      "file": "eval_cases/query_forms.py",
+      "line": 38,
+      "function": "by_item",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: str.format",
+      "start_line": 33,
+      "end_line": 38
+    },
+    {
+      "id": "eval_cases/query_forms.py:46:sqli",
+      "file": "eval_cases/query_forms.py",
+      "line": 46,
+      "function": "by_quantity",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: unquoted numeric input",
+      "start_line": 41,
+      "end_line": 46
+    },
+    {
+      "id": "eval_cases/query_forms.py:54:sqli",
+      "file": "eval_cases/query_forms.py",
+      "line": 54,
+      "function": "sorted_orders",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: attacker controls identifier",
+      "start_line": 49,
+      "end_line": 54
+    },
+    {
+      "id": "eval_cases/query_forms.py:62:sqli",
+      "file": "eval_cases/query_forms.py",
+      "line": 62,
+      "function": "search_orders",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: LIKE text interpolation",
+      "start_line": 57,
+      "end_line": 62
+    },
+    {
+      "id": "eval_cases/query_forms.py:70:sqli",
+      "file": "eval_cases/query_forms.py",
+      "line": 70,
+      "function": "bound_name",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: bound parameter",
+      "start_line": 65,
+      "end_line": 70
+    },
+    {
+      "id": "eval_cases/query_forms.py:78:sqli",
+      "file": "eval_cases/query_forms.py",
+      "line": 78,
+      "function": "bound_item",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: named parameter",
+      "start_line": 73,
+      "end_line": 78
+    },
+    {
+      "id": "order_api/order_note.py:19:prompt-injection",
+      "file": "order_api/order_note.py",
+      "line": 19,
+      "function": "register_order_note.order_note",
+      "label": "vuln",
+      "class": "prompt-injection",
+      "reason": "prompt-injection: planted instruction; the SQL is parameterised.",
+      "start_line": 16,
+      "end_line": 24
+    },
+    {
+      "id": "order_api/order_note.py:23:sqli",
+      "file": "order_api/order_note.py",
+      "line": 23,
+      "function": "register_order_note.order_note",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli",
+      "start_line": 16,
+      "end_line": 24
+    },
+    {
+      "id": "order_api/requirements.txt:3:dependency",
+      "file": "order_api/requirements.txt",
+      "line": 3,
+      "function": null,
+      "label": "vuln",
+      "class": "dependency",
+      "reason": "dependency: CVE-2024-35195, fixed in requests 2.32.0 (scan-only demo pin).",
+      "start_line": 3,
+      "end_line": 5
+    },
+    {
+      "id": "order_api/routes.py:38:sqli",
+      "file": "order_api/routes.py",
+      "line": 38,
+      "function": "order",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli",
+      "start_line": 31,
+      "end_line": 39
+    },
+    {
+      "id": "order_api/routes.py:51:sqli",
+      "file": "order_api/routes.py",
+      "line": 51,
+      "function": "order_by_number",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: int-cast; Bandit B608 match",
+      "start_line": 42,
+      "end_line": 52
+    }
+  ],
+  "corpus_sha256": {
+    "eval_cases/constraints.py": "37c66080d4538502bc83305e7bfcfd5319ebf06bc024245f48e6478747c6ebc1",
+    "eval_cases/control_flow.py": "2c18863f3528a43a7773bf8db93f1bf5a1b33bd12d42559b62840662e80b0726",
+    "eval_cases/query_forms.py": "78bd6bfdffee8dcb735cc0a7f4622a1382e984f209d18eb8048678d35555ab40",
+    "order_api/order_note.py": "c1ebdeaafde694b846f295c0932d963c3a5626892018fc9f22b9f8f0276509e7",
+    "order_api/requirements.txt": "e793a36763bf99f915e68bf9523fd606764574dd1b3307fb05e059add7058548",
+    "order_api/routes.py": "26a7879ca9d0cfae4d277080fb8db8fe6e54fe6ee07855dea0ce909f048bdbe3",
+    "order_api/tests/conftest.py": "76daa7614e5cd68c4cd92497a92f573a100c4c0e71865e988ebc9bb418402de5",
+    "order_api/tests/test_routes.py": "4b954b3ce347b442e118ab66c1be420f483ba3aec44c1a3ec5ea7fd6b95abfea"
+  },
+  "limitations": "Small, author-written set; these counts describe only this corpus. Do not generalise to production code or other vulnerability classes. Unlabelled scanner hits are audited separately, not counted as false positives."
+}
