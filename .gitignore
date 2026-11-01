@@ -23,6 +23,7 @@ pytest-cache-files-*/
 *.db
 .env
 .env.*
+gha-creds-*.json
 
 # Runtime traces
 traces/

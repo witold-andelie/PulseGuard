@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Open the PulseGuard security demo on an available deployment.">
+  <title>Open PulseGuard</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="front-door.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <main id="main" tabindex="-1">
+    <p class="eyebrow">PulseGuard · REPLAY demo</p>
+    <h1>Evidence before action.</h1>
+    <p>Explore the governed security workflow, its evidence, and its recorded decisions.</p>
+    <p id="status" role="status" aria-live="polite" aria-atomic="true">Ready to open PulseGuard. Checking deployment availability when JavaScript is enabled.</p>
+    <p id="cloud-hint">Google Cloud link appears after its first deployment.</p>
+    <nav aria-label="Deployment links">
+      <a id="cloud-run-link" hidden href="#">Open Google Cloud</a>
+      <a href="https://pulseguard-dufi.onrender.com">Open Render</a>
+    </nav>
+    <button id="stay" type="button" hidden>Stay on this page</button>
+    <noscript><p>JavaScript is disabled. Choose a deployment above. Render is always the fallback link.</p></noscript>
+    <p class="note">Google Cloud is preferred when healthy. If it is unavailable, this page opens Render automatically. Render can take a moment to wake up.</p>
+  </main>
+</body>
+</html>
