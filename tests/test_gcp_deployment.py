@@ -151,3 +151,14 @@ def test_artifact_loader_skips_forks_and_expired_artifacts(monkeypatch):
     ])
     monkeypatch.setattr("deploy.gcp.pages_endpoint.get", lambda *_: next(replies))
     assert latest_endpoint(repository, "fake-token") == CLOUD
+
+
+def test_deploy_script_curl_options_are_separate_words():
+    # curl rejects "--option=value"; the first live deployment failed its smoke test on it.
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "deploy/gcp/deploy.sh").read_text(encoding="utf-8")
+    curl = script[script.index("curl "):script.index('"$url$path"')]
+    assert not re.search(r"--[a-z-]+=", curl)

@@ -49,8 +49,9 @@ gc run deploy "$SERVICE" --region="$REGION" --image="$immutable" \
 url="$(gc run services describe "$SERVICE" --region="$REGION" --format='value(status.url)')"
 [[ "$url" =~ ^https://[a-z0-9-]+(\.[a-z0-9-]+)*\.run\.app$ ]] || { echo 'Unexpected Cloud Run URL.' >&2; exit 1; }
 for path in /health /api/mode; do
-    code="$(curl --silent --show-error --output=/dev/null --write-out='%{http_code}' \
-        --connect-timeout=10 --max-time=60 "$url$path")"
+    # curl takes each long option and its value as separate words (no "=" form).
+    code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+        --connect-timeout 10 --max-time 60 "$url$path")"
     [[ "$code" == 200 ]] || { printf 'Smoke test %s returned %s\n' "$path" "$code" >&2; exit 1; }
 done
 GCP_SERVICE_URL="$url" python3 - <<'PY'
