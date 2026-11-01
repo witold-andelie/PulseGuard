@@ -23,6 +23,16 @@ from pulseguard.contracts.models import Finding
 LINE_WINDOW = 12
 ANNOTATION = re.compile(r"@(?P<label>vuln|safe)\b\s*:?[ \t]*(?P<body>.*)", re.IGNORECASE)
 KNOWN_CLASSES = {"sqli", "dependency", "prompt-injection", "cmdi", "ssrf"}
+CORPORA = ("original", "hard", "all")
+
+
+def site_corpus(file: str) -> str:
+    """Corpus identity is a path convention, never inferred from truth labels."""
+    return "hard" if file.replace("\\", "/").startswith("eval_cases/hard/") else "original"
+
+
+def in_corpus(file: str, corpus: str) -> bool:
+    return corpus == "all" or site_corpus(file) == corpus
 
 
 @dataclass(frozen=True)
@@ -154,13 +164,16 @@ def extract_file(path: Path, root: Path) -> list[Site]:
     return sites
 
 
-def extract_labels(target: str | Path) -> list[Site]:
+def extract_labels(target: str | Path, *, corpus: str = "original") -> list[Site]:
     """Extract annotations from Python and requirements manifests in sorted order."""
     root = Path(target).resolve()
+    if corpus not in CORPORA:
+        raise ValueError(f"corpus must be one of {','.join(CORPORA)}")
     if not root.is_dir():
         raise ValueError("target must be a directory")
     return [site for path in sorted(root.rglob("*"))
             if path.is_file() and (path.suffix == ".py" or path.name == "requirements.txt")
+            and in_corpus(path.relative_to(root).as_posix(), corpus)
             for site in extract_file(path, root)]
 
 

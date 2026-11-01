@@ -33,9 +33,28 @@ _SINK_CALL = re.compile(r"[A-Za-z_][\w.]*\.execute\([^)]*\)")
 SANITIZER_RULES: list[tuple[str, re.Pattern[str]]] = [
     ("int-cast", re.compile(r"\bint\s*\(")),
     ("parameterised query", re.compile(r"\.execute\(\s*[^,()]+(\([^)]*\))?[^,()]*,\s*[\[(]")),
-    ("allow-list", re.compile(r"\bin\s+(ALLOWED|ALLOW|WHITELIST|allowed|allow_list)\w*|"
-                              r"re\.fullmatch\(")),
 ]
+
+ALLOWLIST_CHECKS = [
+    "literal set/tuple/list membership: top-level rejection exit or positive sink wrapper",
+    "module/function constant containers (no alias, mutation or rebinding)",
+    "constant dict subscript/get lookup with literal or implicit None default",
+    "same-variable membership conditional with literal default",
+    "same sink variable, dominance, capture order and no intervening reassignment/call",
+    "members restricted to literal SQL atoms (identifiers or numbers)",
+    "sink captures: plain concatenation, f-strings without specs, positional literal .format",
+]
+
+
+def _sanitizer_limit(checked: list[str], source_available: bool, number: int) -> dict[str, Any]:
+    return {
+        "id": f"L{number}", "check": "sanitizer recognition", "status": "not_covered",
+        "checked": checked,
+        "reason": "checked only: " + "; ".join(checked)
+                  + "; unrecognised guards may exist; no absence or safety claim"
+                  + ("; AST allow-list analysis unavailable without source code"
+                     if not source_available else ""),
+    }
 
 
 def _source_text(line: TraceLine) -> str:
@@ -150,17 +169,30 @@ def build_hard_evidence(
 
     path_lines = ([trace.source] if trace.source else []) + list(trace.intermediates) + (
         [trace.sink] if trace.sink else [])
-    hits = sanitizer_facts(path_lines)
-    checked = ", ".join(name for name, _ in SANITIZER_RULES)
+    hits = [{"rule": name, "line": line, "scope": "trace-line syntax only"}
+            for name, line in sanitizer_facts(path_lines)]
+    checked = [f"{name}: trace-line regex syntax only" for name, _ in SANITIZER_RULES]
+    recognition_limit = None
+    if code:
+        from pulseguard.falsify.allowlist import allowlist_facts
+        hits.extend(allowlist_facts(code, trace.sink.line if trace.sink else finding.line))
+        checked.extend(ALLOWLIST_CHECKS)
     if hits:
-        found = ", ".join(f"{name} @ L{line}" for name, line in hits)
-        e3 = f"sanitizer rules on path: matched {found} (checked {checked})"
+        descriptions = []
+        for hit in hits:
+            detail = (" {" + ",".join(str(m) for m in hit["members"]) + "}"
+                      if "members" in hit else " (syntax match; sink use not proven)")
+            descriptions.append(f"{hit['rule']} @ L{hit['line']}{detail}")
+        e3 = "sanitizer rules on path: matched " + ", ".join(descriptions)
     else:
-        e3 = f"sanitizer rules on path: none matched ({checked})"
+        e3 = "sanitizer rules on path: none recognised"
+    if not hits or any("scope" in hit for hit in hits):
+        recognition_limit = _sanitizer_limit(checked, bool(code), len(analysis_limits or []) + 1)
+        if analysis_limits is not None:
+            analysis_limits.append(recognition_limit)
     items.append(EvidenceItem(
         evidence_id="E3", kind="sanitizer", text=e3,
-        payload={"checked": [n for n, _ in SANITIZER_RULES],
-                 "matched": [{"rule": n, "line": ln} for n, ln in hits]},
+        payload={"checked": checked, "matched": hits, "source_available": bool(code)},
     ))
     if exposure:
         items.append(EvidenceItem(
@@ -237,9 +269,22 @@ def render_block(
     """Render the Hard Evidence Block text exactly in the section 4.2 layout."""
     lines = [HEADER]
     lines += [f"[{it.evidence_id}] {it.text}" for it in items]
+    if analysis_limits is None:
+        analysis_limits = []
+        for item in items:
+            if item.kind != "sanitizer":
+                continue
+            hits = item.payload.get("matched", [])
+            if not hits or any("scope" in hit for hit in hits):
+                analysis_limits.append(_sanitizer_limit(
+                    item.payload.get("checked", []), item.payload.get("source_available", False),
+                    len(analysis_limits) + 1,
+                ))
     if analysis_limits:
         lines.append(LIMITS_HEADER)
-        lines += [f"[{limit['id']}] {limit['check']}: solver_status={limit['status']}, "
+        lines += [f"[{limit['id']}] {limit['check']}: "
+                  f"{'solver_status' if limit['check'] == 'z3 validator check' else 'status'}="
+                  f"{limit['status']}, "
                   f"reason={limit['reason']}" for limit in analysis_limits]
     lines.append(CODE_HEADER)
     if sink_line is None:

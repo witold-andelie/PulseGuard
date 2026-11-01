@@ -110,7 +110,7 @@ def test_record_all_scenarios_and_serve_replay(tmp_path, monkeypatch, topology_r
     assert sql["poc"]["status"] == "witnessed"
     assert any(item["evidence_id"] == "E5" for item in sql["evidence"])
     assert sql["z3_veto"] == "not_applicable"
-    assert sql["analysis_limits"] == []
+    assert sql["analysis_limits"][0]["status"] == "not_covered"
     assert [v["role"] for v in sql["verdicts"]] == ["adjudicator", "counterfactual"]
     assert activities(sql) == [
         "FINDING_INGESTED", "EVIDENCE_BUILT", "VERDICT_CONFIRMED", "VERIFIED",

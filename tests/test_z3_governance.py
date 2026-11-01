@@ -278,12 +278,13 @@ def test_unknown_is_an_analysis_limit_and_not_an_evidence_id():
     limits = []
     items = build_hard_evidence(finding, trace, code=code, analysis_limits=limits)
     assert "E6" not in [item.evidence_id for item in items]
-    assert len(limits) == 1
-    assert limits[0]["id"] == "L1" and limits[0]["status"] == "unknown"
-    assert "lookahead" in limits[0]["reason"]
+    assert len(limits) == 2
+    assert limits[0]["status"] == "not_covered"
+    assert limits[1]["id"] == "L2" and limits[1]["status"] == "unknown"
+    assert "lookahead" in limits[1]["reason"]
     block = render_block(items, code, analysis_limits=limits)
     assert block.index(HEADER) < block.index(LIMITS_HEADER) < block.index(CODE_HEADER)
-    assert "[L1] z3 validator check: solver_status=unknown, reason=unsupported regex" in block
+    assert "[L2] z3 validator check: solver_status=unknown, reason=unsupported regex" in block
     state = run_graph(0.05, name="lookahead_unknown.py")
     assert state["analysis_limits"] == limits
     assert "L1" not in state["finding"]["evidence_ids"]
