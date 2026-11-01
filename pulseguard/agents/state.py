@@ -35,6 +35,7 @@ class SecOpsState(TypedDict, total=False):
     evidence: list[dict[str, Any]]   # EvidenceItem dumps (E1..E3)
     evidence_block: str              # rendered Hard Evidence Block
     analysis_limits: list[dict[str, Any]]  # L-ids, never citable evidence
+    dependency_check: dict[str, Any]  # recorded Trivy facts; never a model conclusion
 
     verdict: dict[str, Any]          # Verdict payload (adjudicator)
     band: str                        # confirmed | uncertain | false_positive | abstained

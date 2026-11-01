@@ -2,18 +2,21 @@
 
 import asyncio
 import hashlib
+import json
 import shutil
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from pulseguard.agents.graph import GraphDeps
 from pulseguard.agents.runner import resume_case, start_case
 from pulseguard.api import create_app
-from pulseguard.ingest import finding_from_trivy
+from pulseguard.ingest import group_dependency_findings
 from pulseguard.patching.sandbox import SandboxVerifier
+from pulseguard.paths import REPO_ROOT
+from pulseguard.run import live_run, trivy_findings
 from pulseguard.scanners.normalize import normalize
-from pulseguard.scanners.trivy import TrivyReportLoader
 from pulseguard.store import Store
 from tests.fakes import PATCH, FakeLLM, FakeScanner, low_verdict, verdict
 
@@ -83,12 +86,10 @@ def test_scenario_1_sqli_p0_human_bundle_and_rollback(tmp_path, monkeypatch):
 
 
 def test_scenario_2_dependency_bump_p2_auto_approval(tmp_path):
-    target = tmp_path / "dep"
-    shutil.copytree(FIXTURES / "dependency", target)
-    vuln = TrivyReportLoader(target / "scan" / "trivy-report.json").vulnerabilities()[0]
-    finding = finding_from_trivy(vuln, recorded=False).to_payload()
+    target = REPO_ROOT / "demo_target" / "order_api"
+    finding, = group_dependency_findings(trivy_findings(target))
     db, output = tmp_path / "s2.sqlite", tmp_path / "bundle"
-    llm = FakeLLM([verdict()])
+    llm = FakeLLM([])
     status, _ = _start(target, finding, llm, None, db, output)
     assert not status["awaiting_approval"]
     assert status["values"]["priority"] in ("P2", "P3")
@@ -96,11 +97,28 @@ def test_scenario_2_dependency_bump_p2_auto_approval(tmp_path):
     assert status["values"]["approval"]["actor"] == "policy:auto"
     assert status["values"]["finding"]["state"] == "remediated"
     assert not status["values"].get("counterfactual")
-    assert "demo-lib==2.0.0" in (
+    assert "requests==2.33.0" in (
         Path(status["values"]["bundle"]["applied_target"]) / "requirements.txt"
     ).read_text(encoding="utf-8")
-    assert all(call["session"].endswith("-adjudicator") for call in llm.calls)
+    assert "requests==2.33.0" in status["values"]["bundle"]["patch"]
+    assert llm.calls == []
+    assert not status["values"].get("model_calls")
+    assert not status["values"].get("skeptic")
+    result = status["values"]["verdict"]
+    assert result["role"] == "verifier" and result["model"] == "none"
+    assert result["band"] == "confirmed" and result["score"] == 1.0
+    assert set(result["cited_evidence"]) == {e["evidence_id"]
+                                            for e in status["values"]["evidence"]}
+    assert set(finding["extra"]["cve_ids"]) == {
+        "CVE-2024-35195", "CVE-2024-47081", "CVE-2026-25645"}
+    assert status["values"]["sandbox_report"]["pytest_ok"] is True
+    assert {c["name"] for c in status["values"]["verification"]["checks"]} >= {
+        "cited_cve", "dependency_report", "patch_scope"}
     activities = [e["activity"] for e in status["values"]["events"]]
+    confirmed = next(e for e in status["values"]["events"]
+                     if e["activity"] == "VERDICT_CONFIRMED")
+    assert confirmed["resource"] == "deterministic"
+    assert "CHALLENGED" not in activities
     assert "PATCH_PROPOSED" in activities and "APPROVED" in activities
     assert activities.count("APPROVED") == 1
     assert Store(db).list_approvals(finding["case_id"])[0]["policy_tier"] == "auto"
@@ -108,18 +126,82 @@ def test_scenario_2_dependency_bump_p2_auto_approval(tmp_path):
 
 
 def test_scenario_2_stale_bus_is_advise_only(tmp_path):
-    target = tmp_path / "dep"
-    shutil.copytree(FIXTURES / "dependency", target)
-    vuln = TrivyReportLoader(target / "scan" / "trivy-report.json").vulnerabilities()[0]
-    finding = finding_from_trivy(vuln, recorded=False).to_payload()
+    target = REPO_ROOT / "demo_target" / "order_api"
+    finding, = group_dependency_findings(trivy_findings(target))
     db, output = tmp_path / "stale.sqlite", tmp_path / "bundle"
-    status, _ = _start(target, finding, FakeLLM([verdict()]), None, db, output,
+    llm = FakeLLM([])
+    status, _ = _start(target, finding, llm, None, db, output,
                        bus_health="stale")
+    assert llm.calls == []
     assert status["awaiting_approval"]
     assert status["values"]["policy"]["tier"] == "advise-only"
     assert "human" in status["values"]["review_reason"]
     assert status["values"]["events"][-1]["activity"] == "APPROVAL_REQUESTED"
     assert status["values"]["events"][-1]["attributes"]["policy_tier"] == "advise-only"
+
+
+def test_dependency_only_run_never_requires_model_or_topology(tmp_path, monkeypatch):
+    def unexpected_model():
+        pytest.fail("dependency-only runs must not configure a model")
+
+    monkeypatch.setattr("pulseguard.run.make_llm", unexpected_model)
+    statuses = asyncio.run(live_run(
+        REPO_ROOT / "demo_target" / "order_api", scanners=("trivy",), topology_source="image",
+        db_path=tmp_path / "live.sqlite", output_dir=tmp_path / "bundles"))
+    assert len(statuses) == 1
+    state = statuses[0]["values"]
+    assert state["finding"]["state"] == "remediated"
+    assert state["approval"]["actor"] == "policy:auto"
+    assert not state.get("model_calls") and not state.get("topology_extraction")
+
+
+@pytest.mark.parametrize("problem,band", [
+    ("no_fix", "uncertain"), ("one_cve_unfixed", "uncertain"),
+    ("unrecorded", "abstained"), ("forged_recorded_flag", "abstained"),
+    ("missing_cve", "abstained"), ("wrong_package", "abstained"),
+    ("wrong_version", "abstained"), ("wrong_fix", "abstained"),
+    ("missing_report", "abstained"), ("invalid_report", "abstained"),
+])
+def test_dependency_without_verified_fix_requires_human_without_model(tmp_path, problem, band):
+    target = tmp_path / "dep"
+    shutil.copytree(REPO_ROOT / "demo_target" / "order_api", target)
+    finding, = group_dependency_findings(trivy_findings(target))
+    report = target / "scan" / "trivy-report.json"
+    data = json.loads(report.read_text(encoding="utf-8"))
+    if problem == "no_fix":
+        finding["extra"]["fixed_version"] = ""
+        for item in data["Results"][0]["Vulnerabilities"]:
+            item.pop("FixedVersion")
+    elif problem == "one_cve_unfixed":
+        data["Results"][0]["Vulnerabilities"][0].pop("FixedVersion")
+    elif problem == "unrecorded":
+        finding["extra"]["recorded"] = False
+    elif problem == "forged_recorded_flag":
+        data["PulseGuard"]["recorded"] = False
+    elif problem == "missing_cve":
+        # Remove a non-primary CVE: checking only extra.cve_id would miss this.
+        data["Results"][0]["Vulnerabilities"].pop(0)
+    elif problem == "wrong_package":
+        finding["extra"]["package"] = "other-package"
+    elif problem == "wrong_version":
+        finding["extra"]["installed_version"] = "0.0.1"
+    elif problem == "wrong_fix":
+        finding["extra"]["fixed_version"] = "2.32.0"
+    report.write_text(json.dumps(data), encoding="utf-8")
+    if problem == "missing_report":
+        report.unlink()
+    elif problem == "invalid_report":
+        report.write_text("{", encoding="utf-8")
+    llm = FakeLLM([])
+    status, _ = _start(target, finding, llm, None, tmp_path / "dep.sqlite", tmp_path / "out")
+    state = status["values"]
+    assert llm.calls == []
+    assert state["band"] == band
+    assert state["finding"]["state"] == ("uncertain" if band == "uncertain" else "escalated")
+    assert state["review_status"] == "human_review"
+    assert not state.get("patchset") and not state.get("bundle")
+    assert not state.get("skeptic") and not state.get("counterfactual")
+    assert "CHALLENGED" not in [e["activity"] for e in state["events"]]
 
 
 def test_scenario_3_int_cast_false_positive_dropped(tmp_path):

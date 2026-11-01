@@ -254,8 +254,19 @@ and skip when the CLI cannot execute. Real Trivy tests carry `@pytest.mark.trivy
 when the binary is absent. No tests make real model calls. Run scanner checks with:
 
     .venv/Scripts/python -m pytest -q -m semgrep -rs
-    .venv/Scripts/python -m bandit -r demo_target/order_api -f json
+    .venv/Scripts/python -m bandit -r demo_target/order_api -f json -x "*/tests/*,*/test_*.py,*/*_test.py,*/conftest.py" -s B101
     .venv/Scripts/python -m pytest -q -m trivy -rs
+
+`BanditRunner` excludes `tests/`, `test_*.py`, `*_test.py` and `conftest.py`, and skips
+`B101` (`assert_used`) by default. Asserts in pytest code express test expectations and
+are not production findings. Callers can configure `excludes` and `skips` (use `()` to
+disable either default); `eval_cases/` remains scanned.
+
+Dependency cases bypass model adjudication, skeptic and counterfactual calls. Every grouped
+CVE must match the manifest, package and installed version in the committed RECORDED Trivy
+report. A recorded fixed version produces a `verifier` verdict (`model=none`, score 1.0),
+then verification, a manifest-only bump to the highest fix, sandbox pytest and tiered policy
+approval. Missing fixes require human review; missing CVEs or provenance escalate the case.
 
 Install Trivy from an official release and verify its archive against that release's
 checksum list. Set `PG_TRIVY_BIN` if it is not on PATH; `PG_TRIVY_CACHE_DIR` selects the

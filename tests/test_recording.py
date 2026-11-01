@@ -60,7 +60,7 @@ def test_record_all_scenarios_and_serve_replay(tmp_path, monkeypatch, topology_r
     topology = load_topology().to_payload()
     reply = {"valid": topology, "invalid": {}, "unsupported": VisionUnsupportedError(422)}[
         topology_reply]
-    llm = FakeLLM([reply, verdict(), PATCH, low_verdict(), POC, low_verdict(), verdict()])
+    llm = FakeLLM([reply, verdict(), PATCH, low_verdict(), POC, low_verdict()])
     monkeypatch.setattr("pulseguard.run.make_llm", lambda: llm)
     monkeypatch.setattr("pulseguard.run.SemgrepRunner", lambda **kwargs: FakeScanner())
     monkeypatch.setattr("pulseguard.run.DEFAULT_COLLECTORS",
@@ -123,6 +123,15 @@ def test_record_all_scenarios_and_serve_replay(tmp_path, monkeypatch, topology_r
     assert len(dep["finding"]["extra"]["cve_ids"]) == 3
     assert dep["finding"]["extra"]["fixed_version"] == "2.33.0"
     assert dep["patches"][0]["patchset"]["ops"][0]["new"] == "requests==2.33.0"
+    assert "requests==2.33.0" in dep["bundle"]["patch"]
+    assert dep["model_calls"] == []
+    assert dep.get("skeptic") is None and dep.get("counterfactual") is None
+    assert [v["role"] for v in dep["verdicts"]] == ["verifier"]
+    assert dep["verdicts"][0]["model"] == "none" and dep["verdicts"][0]["score"] == 1.0
+    assert next(e for e in dep["events"] if e["activity"] == "VERDICT_CONFIRMED")[
+        "resource"] == "deterministic"
+    assert not any(dep["finding"]["case_id"] in call["session"] for call in llm.calls)
+    assert "CHALLENGED" not in activities(dep)
     assert activities(dep) == [
         "FINDING_INGESTED", "EVIDENCE_BUILT", "VERDICT_CONFIRMED", "VERIFIED",
         "BLAST_RADIUS_SCORED", "PATCH_PROPOSED", "SANDBOX_PASSED", "APPROVAL_REQUESTED",

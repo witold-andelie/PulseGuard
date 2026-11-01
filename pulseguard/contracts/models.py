@@ -84,7 +84,8 @@ class EvidenceItem(_Strict):
     """One line of the Hard Evidence Block (framework 4.2). ``evidence_id`` is E1, E2, ..."""
 
     evidence_id: str = Field(pattern=r"^E[0-9]+$")
-    kind: Literal["rule_source", "dataflow", "sanitizer", "exposure", "poc", "constraint"]
+    kind: Literal["rule_source", "dataflow", "sanitizer", "exposure", "poc", "constraint",
+                  "dependency", "provenance", "fixed_version"]
     text: str
     payload: dict[str, Any] = Field(default_factory=dict)
 

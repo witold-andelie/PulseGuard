@@ -95,6 +95,33 @@ def constraint_item(result: Any) -> EvidenceItem | None:
     return EvidenceItem(evidence_id="E6", kind="constraint", text=text, payload=payload)
 
 
+def build_dependency_evidence(finding: Finding, report: dict[str, Any]) -> list[EvidenceItem]:
+    """Dependency evidence describes recorded CVEs, provenance and fixes, without code taint."""
+    extra = finding.extra
+    cves = report.get("cve_ids") or extra.get("cve_ids") or [extra.get("cve_id")]
+    provenance = report.get("provenance") or {}
+    fixed = report.get("fixed_version") or ""
+    claim = report["ok"]
+    return [
+        EvidenceItem(
+            evidence_id="E1", kind="dependency",
+            text=f"{extra.get('package')}=={extra.get('installed_version')}: CVEs {cves}",
+            payload={"cve_ids": cves, "file": finding.file, "line": finding.line,
+                     "claim": claim},
+        ),
+        EvidenceItem(
+            evidence_id="E2", kind="provenance",
+            text=f"Trivy report {extra.get('report')}: {report['detail']}",
+            payload={"report": extra.get("report"), "provenance": provenance, "claim": claim},
+        ),
+        EvidenceItem(
+            evidence_id="E3", kind="fixed_version",
+            text=f"highest recorded fixed version: {fixed or 'unavailable; human review'}",
+            payload={"fixed_version": fixed, "claim": claim},
+        ),
+    ]
+
+
 def build_hard_evidence(
     finding: Finding, trace: DataflowTrace | None, *, exposure: str | None = None,
     code: str | None = None, needle: str = "'",

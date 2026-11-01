@@ -3,6 +3,8 @@
 Bandit supplies pattern matches, never a taint proof. For B608 we also attach a syntactic
 assignment slice from the enclosing function so the evidence builder can inspect int casts.
 This locally derived context is separate from the unchanged scanner JSON in ``raw``.
+Test files are excluded and B101 is skipped by default: pytest asserts express test
+expectations, not production vulnerabilities. Both defaults can be overridden by callers.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -99,19 +102,31 @@ def _sql_context(code: str, line: int) -> DataflowTrace | None:
 class BanditRunner:
     """Run Bandit JSON on Python source; exit 1 means findings, not failure."""
 
-    def __init__(self, executable: str | None = None, timeout: float = 60.0) -> None:
+    def __init__(self, executable: str | None = None, timeout: float = 60.0, *,
+                 excludes: Sequence[str] = ("*/tests/*", "*/test_*.py", "*/*_test.py",
+                                            "*/conftest.py"),
+                 skips: Sequence[str] = ("B101",)) -> None:
         self.executable = executable or os.environ.get("PG_BANDIT_BIN")
         self.timeout = timeout
+        self.excludes = tuple(excludes)
+        self.skips = tuple(skips)
 
     @staticmethod
     def available() -> bool:
         return bool(os.environ.get("PG_BANDIT_BIN") or importlib.util.find_spec("bandit"))
 
     def run_json(self, target: str | os.PathLike[str]) -> dict[str, Any]:
+        # A full path makes the test-directory globs work for relative targets too.
+        target = Path(target).resolve()
         command = [self.executable] if self.executable else [sys.executable, "-m", "bandit"]
+        command += ["-r", str(target), "-f", "json", "-q"]
+        if self.excludes:
+            command += ["--exclude", ",".join(self.excludes)]
+        if self.skips:
+            command += ["--skip", ",".join(self.skips)]
         try:
             proc = subprocess.run(
-                [*command, "-r", str(target), "-f", "json", "-q"],
+                command,
                 capture_output=True, timeout=self.timeout, check=False,
                 env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1"),
             )

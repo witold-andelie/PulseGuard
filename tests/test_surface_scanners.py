@@ -70,7 +70,8 @@ def test_scenario_four_comment_is_screened_in_its_route():
 def test_bandit_subprocess_command_and_finding_exit(monkeypatch, tmp_path, status):
     def run(args, **kwargs):
         assert args[:3] == [sys.executable, "-m", "bandit"]
-        assert args[3:] == ["-r", str(tmp_path), "-f", "json", "-q"]
+        assert args[3:] == ["-r", str(tmp_path), "-f", "json", "-q", "--exclude",
+                            "*/tests/*,*/test_*.py,*/*_test.py,*/conftest.py", "--skip", "B101"]
         assert kwargs["timeout"] == 4 and kwargs["check"] is False
         # SYNTHETIC empty scanner result, not persisted or exposed in the API.
         return SimpleNamespace(returncode=status, stdout=b'{"results": [], "errors": []}',
@@ -78,6 +79,20 @@ def test_bandit_subprocess_command_and_finding_exit(monkeypatch, tmp_path, statu
 
     monkeypatch.setattr(subprocess, "run", run)
     assert BanditRunner(timeout=4).run(tmp_path) == []
+
+
+@pytest.mark.parametrize("excludes,skips,options", [
+    ((), (), []),
+    (("vendor/*",), ("B102", "B103"), ["--exclude", "vendor/*", "--skip", "B102,B103"]),
+])
+def test_bandit_scan_defaults_are_configurable(monkeypatch, excludes, skips, options):
+    def run(args, **kwargs):
+        assert args == [sys.executable, "-m", "bandit", "-r", str(Path("target").resolve()),
+                        "-f", "json", "-q", *options]
+        return SimpleNamespace(returncode=0, stdout=b'{"results": [], "errors": []}', stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert BanditRunner(excludes=excludes, skips=skips).run("target") == []
 
 
 @pytest.mark.parametrize("status,body", [(2, b"{}"), (0, b"invalid"), (0, b"[]"),

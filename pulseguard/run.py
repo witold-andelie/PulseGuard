@@ -27,6 +27,7 @@ from pulseguard.bus.watchdog import BusWatchdog
 from pulseguard.env import load_env_file
 from pulseguard.ingest import group_dependency_findings, merge_findings
 from pulseguard.paths import REPO_ROOT, default_db_path
+from pulseguard.risk.blast_radius import is_dependency
 from pulseguard.scanners.bandit import BanditRunner
 from pulseguard.scanners.normalize import normalize, normalize_bandit, normalize_trivy
 from pulseguard.scanners.semgrep import SemgrepRunner
@@ -129,7 +130,6 @@ async def live_run(
         name not in ALLOWED_SCANNERS for name in selected
     ):
         raise ValueError("choose unique scanners from semgrep, bandit, trivy")
-    client = llm or make_llm()
     scanner = scanner or SemgrepRunner(timeout=45.0)
     db_path = db_path or default_db_path()
     run_id = run_id or f"live-{uuid.uuid4().hex[:12]}"
@@ -142,8 +142,10 @@ async def live_run(
     for collect in (defaults if collectors is None else collectors):
         payloads.extend(await asyncio.to_thread(collect, target))
     payloads = merge_findings(group_dependency_findings(payloads))
+    needs_model = any(not is_dependency(finding) for finding in payloads)
+    client = llm or (make_llm() if needs_model else None)
     topology = None
-    if source == "image" and payloads:
+    if source == "image" and needs_model:
         topology = await asyncio.to_thread(
             extract_topology, llm=client, session=f"pg-{run_id}-topology")
     bus = InMemoryBus()

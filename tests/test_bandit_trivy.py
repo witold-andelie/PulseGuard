@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from pulseguard.paths import REPO_ROOT
+from pulseguard.scanners.bandit import BanditRunner
 
 DEMO = REPO_ROOT / "demo_target" / "order_api" / "routes.py"
 
@@ -22,6 +23,21 @@ def test_bandit_flags_b608_on_demo_target():
     data = json.loads(proc.stdout or proc.stderr)
     ids = {item.get("test_id") for item in data.get("results") or []}
     assert "B608" in ids
+
+
+def test_bandit_excludes_demo_tests_and_keeps_both_order_b608_findings():
+    target = DEMO.parent
+    # Enable B101 to prove test exclusions work independently of the default skip.
+    for runner in (BanditRunner(), BanditRunner(skips=())):
+        findings = runner.run(target)
+        assert findings
+        assert not any("tests" in os.path.relpath(item.path, target).split(os.sep)
+                       for item in findings)
+        lines = {item.line for item in findings
+                 if item.test_id == "B608" and item.path == str(DEMO)}
+        source = DEMO.read_text(encoding="utf-8").splitlines()
+        assert {i for i, text in enumerate(source, 1)
+                if 'q = "SELECT' in text or 'number_query = "SELECT' in text} <= lines
 
 
 @pytest.mark.trivy

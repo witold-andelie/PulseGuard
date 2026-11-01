@@ -22,7 +22,7 @@ from langgraph.types import interrupt
 
 from pulseguard import guard as guard_mod
 from pulseguard.agents.adjudicator import adjudicate as model_adjudicate
-from pulseguard.agents.adjudicator import is_system_fallback, uncertain_verdict
+from pulseguard.agents.adjudicator import dependency_verdict, is_system_fallback, uncertain_verdict
 from pulseguard.agents.bands import BAND_ACTIVITY, DEFAULT_BANDS, Bands
 from pulseguard.agents.llm import LLMClient
 from pulseguard.agents.remediator import propose_patch, validate_patch_scope
@@ -30,7 +30,7 @@ from pulseguard.agents.skeptic import abstained_verdict, challenge, resolution
 from pulseguard.agents.state import SecOpsState
 from pulseguard.contracts.models import EvidenceItem, Finding
 from pulseguard.contracts.validate import assert_payload
-from pulseguard.evidence import build_hard_evidence, render_block
+from pulseguard.evidence import build_dependency_evidence, build_hard_evidence, render_block
 from pulseguard.falsify.counterfactual import consistent
 from pulseguard.falsify.poc import witness
 from pulseguard.falsify.z3_check import check_validator_dominance
@@ -49,7 +49,12 @@ from pulseguard.patching.sandbox import SandboxVerifier, Scanner
 from pulseguard.paths import REPO_ROOT
 from pulseguard.risk.blast_radius import exposure_text, is_dependency, score_finding
 from pulseguard.scanners.semgrep import DataflowTrace, TraceLine
-from pulseguard.verify import check_cited_evidence, verify_finding
+from pulseguard.verify import (
+    check_cited_evidence,
+    check_dependency_report,
+    check_patch_scope,
+    verify_finding,
+)
 
 MAX_ATTEMPTS = 3
 NodeFn = Callable[[SecOpsState], dict[str, Any]]
@@ -156,6 +161,16 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
 
     def evidence(state: SecOpsState) -> dict[str, Any]:
         finding = Finding.model_validate(state["finding"])
+        if _is_dependency(state):
+            report = check_dependency_report(state["finding"], target_root(state))
+            items = build_dependency_evidence(finding, report)
+            ids = [item.evidence_id for item in items]
+            return {
+                "finding": dict(state["finding"], evidence_ids=ids),
+                "dependency_check": report, "evidence": [item.model_dump() for item in items],
+                "evidence_block": render_block(items), "analysis_limits": [],
+                "events": [_ev(state, "EVIDENCE_BUILT", "evidence", evidence_ids=ids)],
+            }
         steps = state.get("trace") or [s.model_dump() for s in finding.trace]
         code = _code(state)
         exposure = exposure_text(state["finding"], code or None)
@@ -180,6 +195,21 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         }
 
     def adjudicate(state: SecOpsState) -> dict[str, Any]:
+        if _is_dependency(state):
+            verdict = dependency_verdict(
+                Finding.model_validate(state["finding"]), state["dependency_check"]).to_payload()
+            band = verdict["band"]
+            return {
+                "verdict": verdict, "band": band,
+                "verdict_metadata": {}, "model_calls": [],
+                "finding": dict(state["finding"],
+                                state="escalated" if band == "abstained" else band),
+                "review_status": "remediating" if band == "confirmed" else "human_review",
+                "review_reason": "" if band == "confirmed" else verdict["step4_verdict"],
+                "events": [_ev(state, "ABSTAINED_ESCALATED" if band == "abstained"
+                               else BAND_ACTIVITY[band], "deterministic",
+                               score=verdict["score"], cited_evidence=verdict["cited_evidence"])],
+            }
         metadata: dict[str, Any] = {}
         fallback = False
         try:
@@ -387,11 +417,27 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         patch = state.get("patchset") or {}
         if state.get("patch_error") or not patch:
             return {"patch_rejected": False}
+        update: dict[str, Any] = {"patch_rejected": False}
+        if _is_dependency(state):
+            scope = check_patch_scope(patch, state["finding"])
+            verification = state["verification"]
+            report = {"ok": verification["ok"] and scope["ok"],
+                      "checks": [*verification["checks"], scope]}
+            update.update(verification=report, verified=report["ok"])
+            if not scope["ok"]:
+                return {
+                    **update, "patch_rejected": True,
+                    "finding": dict(state["finding"], state="escalated"),
+                    "review_status": "human_review", "review_reason": scope["detail"],
+                    "events": [_ev(state, "ABSTAINED_ESCALATED", "verifier",
+                                   reason=scope["detail"], check="patch_scope")],
+                }
         hit = guard_mod.screen_patchset(patch)
         if not hit.flagged:
-            return {"patch_rejected": False}
+            return update
         reason = "destructive remediation intent: " + ", ".join(hit.patterns)
         return {
+            **update,
             "patch_rejected": True,
             "finding": dict(state["finding"], state="escalated"),
             "review_status": "human_review", "review_reason": reason,
@@ -613,7 +659,7 @@ def build_graph(deps: GraphDeps | None = None) -> StateGraph:
         if state["finding"]["state"] == "escalated":
             return END
         if state["band"] == "uncertain":
-            return "skeptic"
+            return END if _is_dependency(state) else "skeptic"
         return "verify"
 
     def after_verify(state: SecOpsState) -> str:

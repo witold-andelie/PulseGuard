@@ -13,7 +13,8 @@ from collections.abc import Iterable
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
-from pulseguard.scanners.normalize import fingerprint_for, normalize
+from pulseguard.ingest import group_dependency_findings
+from pulseguard.scanners.normalize import fingerprint_for, normalize, normalize_trivy
 from pulseguard.scanners.trivy import TrivyReportLoader
 
 CVE_RE = re.compile(r"CVE-\d{4}-\d+")
@@ -138,6 +139,7 @@ def _cves_in(finding: dict[str, Any], cited: Iterable[str],
              evidence: list[dict[str, Any]]) -> set[str]:
     found: set[str] = set()
     extra = finding.get("extra") or {}
+    found.update(str(value) for value in extra.get("cve_ids") or [])
     for value in (finding.get("cve_id"), extra.get("cve_id")):
         if isinstance(value, str) and value:
             found.add(value)
@@ -145,6 +147,7 @@ def _cves_in(finding: dict[str, Any], cited: Iterable[str],
     for eid in cited:
         item = by_id.get(str(eid), {})
         payload = item.get("payload") or {}
+        found.update(str(value) for value in payload.get("cve_ids") or [])
         for value in (payload.get("cve_id"), item.get("text", "")):
             found.update(CVE_RE.findall(str(value)))
     return found
@@ -175,13 +178,57 @@ def check_cited_cve(
     return _check("cited_cve", True, f"{sorted(cves)} present in {label}")
 
 
+def check_dependency_report(finding: dict[str, Any], target: Path) -> Check:
+    """Bind every grouped CVE and its fix to the recorded manifest/package/version.
+
+    Finding metadata alone is not provenance. Re-read the report and use the loader's
+    RECORDED attestation checks. A missing fix is valid evidence requiring human review.
+    """
+    extra = finding.get("extra") or {}
+    path = _safe_join(target, str(extra.get("report") or ""))
+    if path is None or not path.is_file():
+        return _check("dependency_report", False, "Trivy report missing or outside the target")
+    try:
+        loader = TrivyReportLoader(path)
+        provenance = loader.load_raw().get("PulseGuard") or {}
+        vulns = loader.vulnerabilities()
+    except (OSError, ValueError, TypeError, AttributeError):
+        return _check("dependency_report", False, "Trivy report is unreadable or malformed")
+    if extra.get("recorded") is not True or not vulns or not all(v.recorded for v in vulns):
+        return _check("dependency_report", False, "Trivy report lacks recorded provenance")
+    cves = _cves_in(finding, [], [])
+    if not cves or any(CVE_RE.fullmatch(cve) is None for cve in cves):
+        return _check("dependency_report", False, "dependency finding names no valid CVE ids")
+    package = extra.get("package") or extra.get("pkg_name")
+    installed = extra.get("installed_version")
+    manifest = str(extra.get("manifest") or finding["file"])
+    matched = [v for v in vulns if v.vulnerability_id in cves
+               and v.pkg_name == package and v.installed_version == installed
+               and v.target == manifest]
+    missing = sorted(cves - {v.vulnerability_id for v in matched})
+    if missing:
+        return _check("dependency_report", False,
+                      f"{missing} absent for {package}=={installed} in manifest {manifest}")
+    fixes = [v.fixed_version for v in matched]
+    fixed = (max(fixes, key=lambda version: tuple(int(n) for n in re.findall(r"\d+", version)))
+             if all(fixes) else "")
+    if fixed and extra.get("fixed_version") and extra["fixed_version"] != fixed:
+        return _check("dependency_report", False,
+                      f"fixed version does not match the highest recorded fix {fixed}")
+    return {
+        **_check("dependency_report", True, f"{sorted(cves)} present in RECORDED Trivy report"),
+        "cve_ids": sorted(cves), "report": extra["report"], "provenance": provenance,
+        "fixed_version": fixed if extra.get("fixed_version") else "",
+    }
+
+
 def check_patch_scope(patchset: dict[str, Any], finding: dict[str, Any]) -> Check:
     """Patch touches only files on the trace, or only the manifest for dependency findings."""
     extra = finding.get("extra") or {}
     ops = patchset.get("ops") or []
     if extra.get("kind") == "dependency" or finding.get("scanner") == "trivy":
         manifest = str(extra.get("manifest") or finding["file"])
-        allowed = {manifest, finding["file"]}
+        allowed = {manifest}
         bad = [op["path"] for op in ops if op["path"] not in allowed]
         if bad:
             return _check("patch_scope", False, f"dependency patch left the manifest: {bad}")
@@ -236,6 +283,13 @@ def _rerun_trivy(finding: dict[str, Any], target: Path) -> Check:
     if path is None or not path.is_file():
         return _check("rerun_hash", False, f"Trivy report missing: {report_rel}")
     synthetic = extra.get("recorded") is False
+    if extra.get("cve_ids"):
+        grouped = group_dependency_findings([
+            normalize_trivy(vuln).to_payload() for vuln in TrivyReportLoader(path).vulnerabilities()
+        ])
+        ok = any(item["fingerprint"] == finding["fingerprint"] for item in grouped)
+        return _check("rerun_hash", ok, "grouped Trivy fingerprint "
+                      + ("reproduced from report" if ok else "not reproduced from report"))
     for vuln in TrivyReportLoader(path).vulnerabilities():
         pkg = extra.get("package") or extra.get("pkg_name")
         if pkg and vuln.pkg_name != pkg:
@@ -265,6 +319,8 @@ def verify_finding(
         check_rerun_hash(finding, target, scanner),
         check_validator_lines(evidence, target),
     ]
+    if (finding.get("extra") or {}).get("kind") == "dependency":
+        checks.append(check_dependency_report(finding, target))
     if patchset:
         checks.append(check_patch_scope(patchset, finding))
     return {"ok": all(item["ok"] for item in checks), "checks": checks}

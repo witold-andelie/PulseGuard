@@ -66,6 +66,31 @@ def is_system_fallback(verdict: Verdict) -> bool:
     return bool(getattr(verdict, "_system_fallback", False))
 
 
+def dependency_verdict(finding: Finding, report: dict[str, Any]) -> Verdict:
+    """Decide recorded dependency facts without consulting an exploitability model."""
+    confirmed = report["ok"] and bool(report.get("fixed_version"))
+    band = "confirmed" if confirmed else ("uncertain" if report["ok"] else "abstained")
+    provenance = report.get("provenance") or {}
+    verdict = Verdict(
+        is_exploitable=confirmed, score=1.0 if confirmed else 0.5, band=band,
+        role="verifier", model="none", case_id=finding.case_id,
+        cited_evidence=["E1", "E2", "E3"] if report["ok"] else [],
+        step1_dataflow=f"Dependency {finding.extra.get('package')}=="
+                       f"{finding.extra.get('installed_version')}; {report['detail']}.",
+        step2_constraint="Highest recorded fixed version: "
+                         f"{report.get('fixed_version') or 'none'}.",
+        step3_context=f"Report {finding.extra.get('report')}; "
+                      f"label {provenance.get('label', 'unverified')}, "
+                      f"Trivy {provenance.get('tool_version', 'unknown')}, "
+                      f"scanned at {provenance.get('scanned_at', 'unknown')}.",
+        step4_verdict=("Recorded CVEs and fixed version confirmed; deterministic manifest bump."
+                       if confirmed else "Human review: " + (
+                           "no fixed version available" if report["ok"] else report["detail"])),
+    )
+    assert_payload("verdict", verdict.to_payload())
+    return verdict
+
+
 def adjudicate(
     finding: Finding, evidence_block: str, *, llm: LLMClient | None = None,
     metadata: dict[str, Any] | None = None,

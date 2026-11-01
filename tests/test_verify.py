@@ -4,12 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from pulseguard.ingest import finding_from_trivy
+from pulseguard.ingest import finding_from_trivy, group_dependency_findings
+from pulseguard.paths import REPO_ROOT
+from pulseguard.run import trivy_findings
 from pulseguard.scanners.trivy import TrivyReportLoader
 from pulseguard.verify import (
     check_cited_cve,
     check_cited_evidence,
     check_cited_location,
+    check_dependency_report,
     check_patch_scope,
     check_rerun_hash,
     check_validator_lines,
@@ -87,6 +90,22 @@ def test_patch_scope_code_and_dependency():
         {"ops": [{"path": "requirements.txt", "old": "a==1", "new": "a==2"}]}, dep)["ok"]
     assert not check_patch_scope(
         {"ops": [{"path": "routes.py", "old": "a", "new": "b"}]}, dep)["ok"]
+    assert not check_patch_scope(
+        {"ops": [{"path": "routes.py", "old": "a", "new": "b"}]},
+        {**dep, "file": "routes.py"})["ok"]
+
+
+def test_grouped_dependency_verification_checks_all_cves_and_reproduces_group_hash():
+    target = REPO_ROOT / "demo_target" / "order_api"
+    finding, = group_dependency_findings(trivy_findings(target))
+    assert check_cited_cve(finding, [], [], target)["ok"]
+    assert check_dependency_report(finding, target)["ok"]
+    assert check_rerun_hash(finding, target, None)["ok"]
+    # A primary CVE match cannot rescue an unreproducible grouped fingerprint.
+    assert not check_rerun_hash({**finding, "fingerprint": "ab" * 32}, target, None)["ok"]
+    finding["extra"]["cve_ids"].append("CVE-1999-9999")
+    assert not check_cited_cve(finding, [], [], target)["ok"]
+    assert not check_dependency_report(finding, target)["ok"]
 
 
 def test_rerun_hash_injected_scanner_and_trivy(tmp_path):
