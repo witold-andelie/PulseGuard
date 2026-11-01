@@ -424,6 +424,24 @@ def test_provider_error_type_only_no_secrets_or_host_paths(tmp_path):
     assert SQLI.splitlines()[0] not in text
 
 
+def test_failed_model_call_is_reported_as_failure_not_verification(tmp_path):
+    class AuthError(RuntimeError):
+        def __init__(self) -> None:
+            super().__init__("unauthorised")
+            self.status_code = 401
+
+    llm = FakeLLM([AuthError()])
+    client = _client(tmp_path, clients={"muse": llm})
+    row = _analyze(client, SQLI).json()["results"][0]
+    assert row["model_failed"] is True
+    assert row["verdict"]["band"] == "uncertain"
+    assert row["verification"] is None
+    decision = row["decision"]
+    assert "model call failed (AuthError, HTTP 401)" in decision
+    assert "verification failed" not in decision
+    assert "never treated as safe or confirmed" in decision
+
+
 def test_non_execution_marker_file_absent(tmp_path):
     marker = tmp_path / "executed.marker"
     code = (

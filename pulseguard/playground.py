@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pulseguard import __version__
 from pulseguard import guard as guard_mod
 from pulseguard.agents.adjudicator import adjudicate as model_adjudicate
+from pulseguard.agents.adjudicator import is_system_fallback
 from pulseguard.agents.bands import DEFAULT_BANDS
 from pulseguard.agents.llm import LLMClient, LLMConfig, LLMConfigError, make_llm
 from pulseguard.contracts.models import Finding, FindingState, TraceStep
@@ -929,6 +930,15 @@ def plain_decision(result: dict[str, Any]) -> str:
     if not result.get("model_called"):
         reason = result.get("model_skipped_reason") or "unavailable"
         return f"Static analysis only. The model was not called ({reason})."
+    if result.get("model_failed"):
+        meta = result.get("model_metadata") or {}
+        cause = meta.get("error") or "unusable answer"
+        if meta.get("status_code"):
+            cause = f"{cause}, HTTP {meta['status_code']}"
+        return (
+            f"The model call failed ({cause}); no verdict was produced. "
+            "Uncertain: human review. A failed call is never treated as safe or confirmed."
+        )
     verdict = result.get("verdict") or {}
     band = verdict.get("band") or "uncertain"
     score = verdict.get("score")
@@ -970,11 +980,12 @@ def plain_decision(result: dict[str, Any]) -> str:
 
 
 def _compare_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
-    called = [row for row in results if row.get("model_called")]
+    called = [row for row in results if row.get("model_called") and not row.get("model_failed")]
     if len(called) < 2:
         return {
             "agree": None,
-            "summary": "One or both models were not called, so there is no model comparison.",
+            "summary": "One or both models were not called or their call failed, "
+                       "so there is no model comparison.",
         }
     left, right = called[0], called[1]
     lb = (left.get("verdict") or {}).get("band")
@@ -1641,6 +1652,13 @@ def _analyze_model(
         "status_code": metadata.get("status_code"),
     }
     verdict_payload = _verdict_payload(verdict)
+    if is_system_fallback(verdict):
+        # A failed call makes no claim: do not run citation checks against it and do not
+        # report "verification failed"; say the call failed and leave it to a human.
+        row["model_failed"] = True
+        row["verdict"] = dict(verdict_payload, band="uncertain")
+        row["decision"] = plain_decision(row)
+        return row
     verify_started = time.perf_counter()
     cited = verdict_payload.get("cited_evidence") or []
     if tier == "llm_only":
