@@ -126,6 +126,7 @@ function stateLabel(value) {
 function parseRoute() {
   const raw = (location.hash || "#board").replace(/^#\/?/, "");
   if (!raw || raw === "board") return { view: "board" };
+  if (raw === "playground") return { view: "playground" };
   if (raw === "process") return { view: "process" };
   if (raw === "how") return { view: "how" };
   const match = raw.match(/^(?:case|cases)\/([^/?#]+)$/);
@@ -142,15 +143,17 @@ function showView(name) {
     node.hidden = node.dataset.view !== name;
   }
   for (const link of document.querySelectorAll("nav[aria-label='Views'] a")) {
-    const current = link.dataset.nav === name || (name === "case" && link.dataset.nav === "board");
+    const current = link.dataset.nav === name
+      || (name === "case" && link.dataset.nav === "board");
     if (current) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
 }
 
-function focusHeading(id) {
+function focusHeading(id, force) {
   const active = document.activeElement;
-  if (active && ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "SUMMARY"].includes(active.tagName)) {
+  if (!force && active
+      && ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "SUMMARY"].includes(active.tagName)) {
     return;
   }
   const heading = $(id);
@@ -1054,6 +1057,308 @@ async function refreshKpis() {
   }
 }
 
+let playgroundConfig = null;
+let playgroundExamples = [];
+let playgroundBound = false;
+const PLAYGROUND_MAX_BYTES = 6144;
+const PLAYGROUND_MAX_LINES = 200;
+
+function playgroundModel() {
+  const selected = document.querySelector("input[name='playground-model']:checked");
+  return selected ? selected.value : "muse";
+}
+
+function updatePlaygroundCounter() {
+  const code = $("playground-code").value;
+  const bytes = new TextEncoder().encode(code).length;
+  const lines = code ? code.split(/\r\n|\n|\r/).length : 0;
+  $("playground-counter").textContent = bytes + " / " + PLAYGROUND_MAX_BYTES + " bytes · "
+    + lines + " / " + PLAYGROUND_MAX_LINES + " lines";
+}
+
+function renderPlaygroundBudget() {
+  const node = $("playground-budget");
+  if (!playgroundConfig) {
+    node.textContent = "Limits and remaining model budget have not loaded yet.";
+    return;
+  }
+  const budget = playgroundConfig.budget || {};
+  const limits = playgroundConfig.limits || {};
+  const models = (playgroundConfig.models || []).map((item) =>
+    item.name + (item.available ? "" : " (unavailable)")).join("; ");
+  node.textContent = "Remaining model calls today: " + recorded(budget.remaining)
+    + " of " + recorded(budget.daily_model_calls)
+    + ". Per client: " + recorded(limits.per_ip_per_minute) + " / minute, "
+    + recorded(limits.per_ip_per_day) + " / day, one at a time. Counters reset on restart. "
+    + "Models: " + (models || MISSING) + ".";
+  const unavailable = (playgroundConfig.models || []).filter((item) => !item.available);
+  if (unavailable.length) {
+    node.className = "notice limit";
+  }
+}
+
+function playgroundSubpanel(root, title) {
+  const node = element("section", undefined, "panel");
+  node.append(element("h3", title));
+  root.append(node);
+  return node;
+}
+
+function renderPlaygroundModel(root, result) {
+  const heading = result.model_label || result.model_id || "Model";
+  const column = element("article", undefined, "panel playground-column");
+  column.append(element("h3", heading));
+  if (result.available === false || !result.model_called) {
+    column.append(element("p",
+      result.model_skipped_reason
+        ? "Model not called: " + result.model_skipped_reason
+        : "Model unavailable. Static analysis is shown below.",
+      "notice limit"));
+  }
+  const guard = playgroundSubpanel(column, "Guard");
+  if (result.guard?.flagged) {
+    guard.append(element("p", "Quarantined — suspected manipulation. This is a Guard feature.",
+      "notice danger"));
+    guard.append(element("p", "Patterns: " + ((result.guard.patterns || []).join(", ") || MISSING)));
+  } else {
+    guard.append(element("p", "No injection pattern matched.", "notice ok"));
+  }
+
+  const scanners = playgroundSubpanel(column, "Scanner findings");
+  if (result.scanner_finding === false) {
+    scanners.append(element("p", "no scanner finding", "notice"));
+  }
+  const hits = [...(result.semgrep || []), ...(result.bandit || [])];
+  if (!hits.length) scanners.append(element("p", "No Semgrep or Bandit finding.", "caption"));
+  else {
+    const list = element("ul");
+    for (const hit of hits) {
+      list.append(element("li",
+        hit.scanner + " " + hit.rule_id + " L" + hit.line + " — " + (hit.message || "")));
+    }
+    scanners.append(list);
+  }
+
+  const trace = playgroundSubpanel(column, "Dataflow trace");
+  if (result.trace?.length) {
+    const list = element("ol", undefined, "trace");
+    for (const step of result.trace) {
+      list.append(element("li", step.kind + " L" + step.line + ": " + (step.content || "")));
+    }
+    trace.append(list);
+  } else missingNote(trace, "Dataflow trace");
+
+  const evidence = playgroundSubpanel(column, "Hard Evidence");
+  evidence.append(element("p",
+    "E-ids are deterministic claims. They outrank names, comments and docstrings.", "caption"));
+  if (result.evidence?.length) {
+    const list = element("ul");
+    for (const item of result.evidence) {
+      list.append(element("li", "[" + item.evidence_id + "] " + (item.text || item.kind)));
+    }
+    evidence.append(list);
+  } else missingNote(evidence, "Hard evidence items");
+  if (result.evidence_block) {
+    const disclosure = element("details", undefined, "research-details");
+    disclosure.append(element("summary", "Show the exact block sent to the model"),
+      element("pre", result.evidence_block));
+    evidence.append(disclosure);
+  }
+
+  const limits = playgroundSubpanel(column, "ANALYSIS LIMITS");
+  limits.classList.add("analysis-limits");
+  limits.append(element("p",
+    "L-ids are not evidence. Coverage is not confidence. A limit is never “no risk”.", "caption"));
+  if (result.analysis_limits?.length) {
+    for (const limit of result.analysis_limits) {
+      limits.append(element("p", "[" + limit.id + "] Not covered (analysis limit) · "
+        + limit.check + ": " + limit.reason, "analysis-limit"));
+    }
+  } else missingNote(limits, "Analysis limits");
+
+  const z3 = playgroundSubpanel(column, "z3");
+  const z3info = result.z3 || {};
+  z3.append(element("p", "Result: " + recorded(z3info.result)
+    + (z3info.claim ? " (claim)" : " (no claim)")));
+  if (z3info.detail) z3.append(element("p", z3info.detail, "caption"));
+  if (result.dominance) {
+    z3.append(element("p", result.dominance.dominates
+      ? "Validator dominates the sink."
+      : "Dominance: " + recorded(result.dominance.reason)));
+  }
+  if (result.z3_veto === "applied") {
+    z3.append(element("p", "Symbolic veto applied. Confirmed was blocked.", "failed"));
+  }
+
+  const adjudication = playgroundSubpanel(column, "Adjudicator");
+  if (result.verdict) renderVerdict(adjudication, result.verdict);
+  else adjudication.append(element("p",
+    result.model_skipped_reason
+      ? "Model not called: " + result.model_skipped_reason
+      : "No adjudication available."));
+
+  const verify = playgroundSubpanel(column, "Deterministic verification");
+  if (result.verification) {
+    verify.append(element("p",
+      result.verification.ok ? "Verification passed" : "Verification failed",
+      result.verification.ok ? "passed" : "failed"));
+    const table = element("table");
+    table.append(element("caption", "Verification checks"));
+    const head = element("tr");
+    for (const label of ["Outcome", "Check", "Detail"]) {
+      const th = element("th", label);
+      th.scope = "col";
+      head.append(th);
+    }
+    const thead = element("thead");
+    thead.append(head);
+    table.append(thead);
+    const body = element("tbody");
+    for (const check of result.verification.checks || []) {
+      const row = element("tr");
+      const th = element("th", check.ok ? "PASS" : "FAIL");
+      th.scope = "row";
+      th.className = check.ok ? "passed" : "failed";
+      row.append(th, element("td", check.name), element("td", check.detail));
+      body.append(row);
+    }
+    table.append(body);
+    verify.append(table);
+  } else missingNote(verify, "Verification checks");
+
+  const decision = playgroundSubpanel(column, "Final decision");
+  decision.append(element("p", result.decision || MISSING, "notice"));
+  const meta = result.model_metadata;
+  if (meta && (meta.name || meta.latency_ms != null)) {
+    decision.append(element("p",
+      "Model " + recorded(meta.name) + " · " + recorded(meta.latency_ms) + " ms"
+      + (meta.tokens?.total_tokens != null ? " · " + meta.tokens.total_tokens + " tokens" : ""),
+      "caption"));
+  }
+  root.append(column);
+}
+
+function renderPlaygroundResults(data) {
+  const root = $("playground-results");
+  const heading = element("h2", "Results");
+  heading.id = "heading-playground-results";
+  heading.tabIndex = -1;
+  root.replaceChildren(heading);
+  root.append(element("p", data.label || playgroundConfig?.label
+    || "Playground — static analysis + model adjudication; nothing is executed or stored.",
+    "notice"));
+  if (data.budget) {
+    root.append(element("p", "Remaining model calls today: " + recorded(data.budget.remaining_model_calls)
+      + " of " + recorded(data.budget.daily_model_calls) + ".", "notice limit"));
+  }
+  if (data.compare) {
+    root.append(element("p",
+      (data.compare.agree === true ? "Models agree. " : data.compare.agree === false
+        ? "Models disagree. " : "")
+      + (data.compare.summary || ""),
+      data.compare.agree === false ? "notice" : "notice ok"));
+  }
+  const results = data.results || [];
+  const wrap = element("div", undefined,
+    results.length > 1 ? "playground-compare" : "playground-single");
+  for (const result of results) renderPlaygroundModel(wrap, result);
+  root.append(wrap);
+}
+
+function bindPlayground() {
+  if (playgroundBound) return;
+  playgroundBound = true;
+  $("playground-code").addEventListener("input", updatePlaygroundCounter);
+  $("playground-example").addEventListener("change", () => {
+    const id = $("playground-example").value;
+    const example = playgroundExamples.find((item) => item.id === id);
+    if (example) {
+      $("playground-code").value = example.code;
+      updatePlaygroundCounter();
+    }
+  });
+  $("playground-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = $("playground-analyze");
+    const results = $("playground-results");
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    results.setAttribute("aria-busy", "true");
+    results.replaceChildren(skeleton());
+    announce("Analysing snippet. Nothing is executed.");
+    try {
+      const data = await api("/api/playground/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: $("playground-code").value, model: playgroundModel() }),
+      });
+      playgroundConfig = playgroundConfig || {};
+      if (data.budget) {
+        playgroundConfig.budget = {
+          remaining: data.budget.remaining_model_calls,
+          daily_model_calls: data.budget.daily_model_calls,
+        };
+        renderPlaygroundBudget();
+      }
+      renderPlaygroundResults(data);
+      announce(data.results?.[0]?.decision || "Playground result ready.");
+      focusHeading("heading-playground-results", true);
+    } catch (error) {
+      const retry = error.status === 429
+        ? " Rate limited. Retry-After was sent by the server."
+        : "";
+      results.replaceChildren(retryBlock(
+        error.status === 429 ? "Playground rate limit" : "Playground analysis failed",
+        error.message + retry, () => $("playground-analyze").click()));
+      announce("Playground analysis failed.");
+    } finally {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      results.removeAttribute("aria-busy");
+    }
+  });
+}
+
+async function showPlayground() {
+  bindPlayground();
+  updatePlaygroundCounter();
+  if (!playgroundConfig) {
+    try {
+      playgroundConfig = await api("/api/playground/config");
+      renderPlaygroundBudget();
+      const caps = playgroundConfig.caps || {};
+      if (caps.max_bytes) $("playground-counter").dataset.maxBytes = String(caps.max_bytes);
+    } catch (error) {
+      $("playground-budget").textContent = "Could not load playground config: " + error.message;
+    }
+  } else renderPlaygroundBudget();
+  if (!playgroundExamples.length) {
+    try {
+      const payload = await api("/api/playground/examples");
+      playgroundExamples = payload.examples || [];
+      const select = $("playground-example");
+      for (const example of playgroundExamples) {
+        const option = element("option", example.title);
+        option.value = example.id;
+        select.append(option);
+      }
+    } catch (error) {
+      announce("Playground examples unavailable.");
+    }
+  }
+  const models = playgroundConfig?.models || [];
+  for (const input of document.querySelectorAll("input[name='playground-model']")) {
+    if (input.value === "both") {
+      input.disabled = models.length > 0 && models.every((item) => !item.available);
+    } else {
+      const row = models.find((item) => item.id === input.value);
+      input.disabled = row ? !row.available && models.some((item) => item.available) : false;
+    }
+  }
+  announce("Playground. Nothing is executed or stored.");
+  focusHeading("heading-playground");
+}
+
 async function refresh() {
   $("refresh").disabled = true;
   $("board").replaceChildren(skeleton());
@@ -1095,6 +1400,9 @@ async function route() {
     focusHeading("heading-board");
   } else if (target.view === "case") {
     await showCase(target.id);
+  } else if (target.view === "playground") {
+    setTitle("Playground");
+    await showPlayground();
   } else if (target.view === "process") {
     setTitle("Process and KPIs");
     if (!modeInfo) await refresh();

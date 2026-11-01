@@ -23,6 +23,7 @@
   </header>
   <nav aria-label="Views">
     <a href="#board" data-nav="board">Case board</a>
+    <a href="#playground" data-nav="playground">Playground</a>
     <a href="#process" data-nav="process">Process and KPIs</a>
     <a href="#how" data-nav="how">How it works</a>
   </nav>
@@ -49,6 +50,45 @@
         <h1 id="heading-case" tabindex="-1">Case detail</h1>
         <p>Select a case to inspect its evidence, verdict and trace.</p>
       </div>
+    </section>
+
+    <section id="view-playground" class="view" data-view="playground" hidden aria-labelledby="heading-playground">
+      <div class="page-title">
+        <div>
+          <p class="eyebrow">Paste · analyse · inspect</p>
+          <h1 id="heading-playground" tabindex="-1">Playground</h1>
+          <p class="lede">Paste a Flask Python snippet. PulseGuard runs Guard, Semgrep, Bandit, Hard Evidence, z3 and a real adjudicator. Nothing is executed or stored.</p>
+        </div>
+      </div>
+      <p class="notice" id="playground-banner">Playground — static analysis + model adjudication; nothing is executed or stored.</p>
+      <p class="notice limit" id="playground-budget">Loading limits and remaining model budget…</p>
+
+      <h2 id="heading-playground-code">Snippet</h2>
+      <form id="playground-form" class="panel">
+        <label for="playground-example">Built-in example</label>
+        <select id="playground-example">
+          <option value="">Choose an example…</option>
+        </select>
+        <label for="playground-code">Python (Flask) snippet</label>
+        <textarea id="playground-code" name="code" rows="16" spellcheck="false" autocomplete="off"
+          aria-describedby="playground-counter playground-caps"></textarea>
+        <p id="playground-counter" class="caption">0 / 6144 bytes · 0 / 200 lines</p>
+        <p id="playground-caps" class="caption">UTF-8 text, at most 6 KB and 200 lines, must parse as Python. Ground-truth annotations are stripped before a model sees the text.</p>
+        <fieldset>
+          <legend>Model</legend>
+          <label><input type="radio" name="playground-model" value="muse" checked> Meta Muse Spark</label>
+          <label><input type="radio" name="playground-model" value="nemotron"> NVIDIA Nemotron</label>
+          <label><input type="radio" name="playground-model" value="both"> Compare both</label>
+        </fieldset>
+        <div class="actions">
+          <button id="playground-analyze" type="submit">Analyze</button>
+        </div>
+      </form>
+
+      <section id="playground-results" aria-labelledby="heading-playground-results">
+        <h2 id="heading-playground-results" tabindex="-1">Results</h2>
+        <p class="muted">Paste a snippet and choose Analyze to see Guard, scanners, evidence and the adjudicator.</p>
+      </section>
     </section>
 
     <section id="view-process" class="view" data-view="process" hidden aria-labelledby="heading-process">
@@ -93,6 +133,11 @@
       <section>
         <h2>REPLAY and LIVE</h2>
         <p><strong>REPLAY</strong> is the public default. The container verifies a sha256 manifest, seeds the case store from a recorded run, and makes no new model calls. Approve, reject and rollback are simulated and labelled. <strong>LIVE</strong> runs locally or behind a token on Render, scans only the bundled demo service, and loses results on restart.</p>
+      </section>
+
+      <section>
+        <h2>Playground</h2>
+        <p>The Playground accepts a pasted Flask snippet, size-capped, and runs the same non-executing analysis path: Guard, Semgrep, Bandit, Hard Evidence, z3, adjudication and citation checks. Submitted code is never executed or stored. When model keys or the daily budget are missing, static analysis still runs and is labelled as such.</p>
       </section>
 
       <section>

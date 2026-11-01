@@ -111,7 +111,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 [tabindex="-1"] { scroll-margin-block: 1.5rem; }
 /* Programmatic focus on view headings is not a keyboard tab stop. */
-.view h1:focus, .view h1:focus-visible { outline: none; }
+.view h1:focus, .view h1:focus-visible,
+.view h2:focus, .view h2:focus-visible { outline: none; }
 h1, h2, h3, h4, p, dt, dd, li { overflow-wrap: anywhere; }
 h1, h2, h3 { line-height: 1.25; font-weight: 650; margin: 0 0 0.6rem; }
 h1 { font-size: clamp(1.5rem, 3vw, 2.1rem); letter-spacing: -0.03em; }
@@ -592,7 +593,7 @@ pre, .patch-box {
   color: var(--muted);
   margin-bottom: 0.75rem;
 }
-input[type="text"] {
+input[type="text"], select, textarea {
   min-height: var(--target);
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--control-line);
@@ -600,7 +601,52 @@ input[type="text"] {
   background: var(--surface);
   color: var(--text);
   max-width: 100%;
+  font: inherit;
 }
+textarea {
+  width: 100%;
+  min-height: 16rem;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+select { width: min(100%, 28rem); }
+#playground-form label, #playground-form legend {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0.75rem 0 0.35rem;
+}
+#playground-form fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+#playground-form fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  color: var(--text);
+  min-height: var(--target);
+  margin: 0;
+}
+#playground-form input[type="radio"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--focus);
+  flex-shrink: 0;
+}
+.playground-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.playground-column h3 { margin-top: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.75rem 0; }
 
 footer {
@@ -633,6 +679,7 @@ footer p { margin: 0 0 0.35rem; max-width: 50rem; }
   .metrics > div:nth-child(2n) { border-inline-start: 1px solid var(--line); }
   .pipeline { grid-template-columns: minmax(0, 1fr); }
   .kv { grid-template-columns: minmax(0, 1fr); }
+  .playground-compare { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
   .metrics { grid-template-columns: minmax(0, 1fr); }
