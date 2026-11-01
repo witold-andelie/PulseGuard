@@ -214,26 +214,38 @@ credentials return 401. Render remains **REPLAY by default**, with `PG_LIVE_TOKE
 
 ## Playground
 
-The public web UI includes a **Playground** (`#playground`) that accepts a pasted Flask
-Python snippet and runs PulseGuard's non-executing analysis on it: Guard, Semgrep (local
-taint rule), Bandit, Hard Evidence, z3 validator proof, model adjudication, citation
-checks and the z3 veto. Two models are switchable, with a compare-both mode: **Meta Muse
-Spark** (primary) and **NVIDIA Nemotron** (control). Endpoints:
+The public web UI includes a **Playground** (`#playground`) that accepts a pasted snippet
+and runs PulseGuard's non-executing analysis on it. Two models are switchable, with a
+compare-both mode: **Meta Muse Spark** (primary) and **NVIDIA Nemotron** (control). The
+request may include an optional `language` hint (`auto` by default). Endpoints:
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/playground/config` | Enabled flag, model names, caps, limits, remaining budget |
-| `GET /api/playground/examples` | Built-in snippets (SQLi concat/f-string, parameterised, allow-list, z3 unsat, unanchored regex, CommentInject, planted AI reviewer) |
-| `POST /api/playground/analyze` | `{code, model: "muse"\|"nemotron"\|"both"}` → Guard, scanners, evidence, verdict, verification, decision |
+| `GET /api/playground/config` | Enabled flag, model names, language list, tiers, caps, limits, remaining budget |
+| `GET /api/playground/examples` | Built-in snippets grouped by language, each labelled with expected tier |
+| `POST /api/playground/analyze` | `{code, model: "muse"\|"nemotron"\|"both", language?: "auto"\|id}` → Guard, tiered static analysis, verdict, verification, decision |
+
+**Language tiers.** What the Playground can prove depends on the language, not on the
+model score.
+
+| Tier | Languages | What it proves |
+| --- | --- | --- |
+| **Full analysis** | Python | Guard, Semgrep, Bandit, Hard Evidence E1–E6, sanitizer facts, z3, adjudication, citation checks and the z3 veto. Behaviour is the original Python pipeline. |
+| **Grammar-level analysis — partial coverage** | Java, JavaScript, TypeScript, Go, C#, C, C++, SQL | Tree-sitter excerpt of the enclosing function plus one-hop referenced definitions; Semgrep SQL-injection taint where rules exist (SQL itself has none). E1/E2 only when the source call is confirmed on that exact line. Sanitizer recognition and z3 are **not** available; the decision states that partial coverage. For C and C++ the decision also states that memory-safety classes (buffer overflow, format string) are not analysed yet. Hard evidence exists, coverage is incomplete. |
+| **LLM-only — advisory, no hard evidence** | COBOL, SAS, PL/SQL, unknown, or a grammar language whose parse fails | No E-items. One analysis limit explains why. The adjudicator still runs on the excerpt. The decision is labelled “advisory only — no hard evidence; would not reach remediation” and never reads as a confirmation, even when the score is high. |
+
+Until `pulseguard.lang` is merged, the Playground uses an in-tree shim: Python stays on
+the full path; every other language is treated as llm_only with a limit that says the
+language backend is absent.
 
 **What it never does.** It does not import, `exec`, `eval`, compile-to-run, sandbox,
-pytest, patch, remediate or store the snippet. Parse is `ast.parse` only. A temp file
-exists solely so Semgrep and Bandit can read text; the per-request directory under the
+pytest, patch, remediate or store the snippet, in any language. A temp file exists solely
+so scanners and citation checks can read text; the per-request directory under the
 system temp is deleted afterwards. Playground results are ephemeral: they are not written
 to `replay/` or the case store. Every response is labelled
 "Playground — static analysis + model adjudication; nothing is executed or stored".
 
-**Limits.** UTF-8 text, ≤ 6 KB, ≤ 200 lines, must parse as Python. `# @vuln` / `# @safe`
+**Limits.** UTF-8 text, ≤ 6 KB, ≤ 200 lines. `# @vuln` / `# @safe` / `// @vuln`
 annotations are stripped before any model sees the text. Guard runs first; a flagged
 snippet is quarantined and never reaches a model. Per client IP (first `X-Forwarded-For`
 hop from Render's proxy): 5 analyses/minute, 40/day, one concurrent analysis. Global
