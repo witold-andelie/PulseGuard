@@ -23,8 +23,11 @@ NEMOTRON_SECRET="${GCP_NEMOTRON_SECRET:-PG_PLAYGROUND_NEMOTRON_API_KEY}"
 TOPIC="${GCP_BUDGET_TOPIC:-pulseguard-budget}"
 BUDGET_PUBLISHER="${GCP_BUDGET_PUBLISHER:-billing-budget-alert@system.gserviceaccount.com}"
 FUNCTION="${GCP_BUDGET_FUNCTION:-pulseguard-budget-guard}"
-BUDGET_NAME="${GCP_BUDGET_NAME:-PulseGuard trial USD 300}"
-BUDGET_AMOUNT="${GCP_BUDGET_AMOUNT:-300USD}"
+# Google requires the billing account currency; set it to the trial account's currency.
+BUDGET_CURRENCY="${GCP_BUDGET_CURRENCY:-USD}"
+BUDGET_UNITS="${GCP_BUDGET_UNITS:-300}"
+BUDGET_NAME="${GCP_BUDGET_NAME:-PulseGuard trial $BUDGET_UNITS $BUDGET_CURRENCY}"
+BUDGET_AMOUNT="$BUDGET_UNITS$BUDGET_CURRENCY"
 # Open-ended, cumulative period: a monthly reset would not cap a 90-day trial.
 BUDGET_START_DATE="${GCP_BUDGET_START_DATE:-$(date -u +%Y-%m-01)}"
 PLACEHOLDER_IMAGE="${GCP_PLACEHOLDER_IMAGE:-us-docker.pkg.dev/cloudrun/container/hello:latest}"
@@ -71,8 +74,9 @@ gc config set account "$account"
 gc config set project "$PROJECT_ID"
 gc config set run/region "$REGION"
 currency="$(gc billing accounts describe "$BILLING_ACCOUNT" --format='value(currencyCode)')"
-[[ "$currency" == USD ]] || {
-    echo 'This plan requires a USD billing account; budgets must use the account currency.' >&2; exit 2;
+[[ "$currency" == "$BUDGET_CURRENCY" ]] || {
+    printf 'Billing account currency is %s; set GCP_BUDGET_CURRENCY=%s and GCP_BUDGET_UNITS.\n' \
+        "$currency" "$currency" >&2; exit 2;
 }
 if ! gc projects describe "$PROJECT_ID" >/dev/null 2>&1; then
     gc projects create "$PROJECT_ID" --name=PulseGuard
@@ -166,7 +170,7 @@ gc functions deploy "$FUNCTION" --gen2 --region="$REGION" --runtime=python312 \
     --service-account="$guard" --trigger-service-account="$trigger" --trigger-topic="$TOPIC" \
     --build-service-account="projects/$PROJECT_ID/serviceAccounts/$builder" \
     --docker-repository="projects/$PROJECT_ID/locations/$REGION/repositories/$REPOSITORY" \
-    --set-env-vars="TARGET_PROJECT_ID=$PROJECT_ID,BUDGET_NAME=$BUDGET_NAME" \
+    --set-env-vars="TARGET_PROJECT_ID=$PROJECT_ID,BUDGET_NAME=$BUDGET_NAME,BUDGET_CURRENCY=$BUDGET_CURRENCY" \
     --min-instances=0 --max-instances=1 --memory=256Mi --timeout=60s --retry \
     --no-allow-unauthenticated
 function_service="$(gc functions describe "$FUNCTION" --gen2 --region="$REGION" --format='value(serviceConfig.service)')"

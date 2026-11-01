@@ -12,4 +12,5 @@ def cap_spending(cloud_event):
         cloud_event,
         project_id=os.environ["TARGET_PROJECT_ID"],
         budget_name=os.environ["BUDGET_NAME"],
+        currency=os.environ.get("BUDGET_CURRENCY", "USD"),
     )

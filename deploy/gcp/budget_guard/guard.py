@@ -7,9 +7,9 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 
-def should_disable(payload: dict, *, budget_name: str) -> bool:
-    """Accept actual USD spend for this budget, never forecasts or malformed amounts."""
-    if payload.get("budgetDisplayName") != budget_name or payload.get("currencyCode") != "USD":
+def should_disable(payload: dict, *, budget_name: str, currency: str = "USD") -> bool:
+    """Accept actual spend in the budget's currency, never forecasts or malformed amounts."""
+    if payload.get("budgetDisplayName") != budget_name or payload.get("currencyCode") != currency:
         return False
     try:
         cost = Decimal(str(payload["costAmount"]))
@@ -32,7 +32,8 @@ def disable_billing(project_id: str) -> None:
         )
 
 
-def handle_event(event, *, project_id: str, budget_name: str, disable=disable_billing) -> bool:
+def handle_event(event, *, project_id: str, budget_name: str, currency: str = "USD",
+                 disable=disable_billing) -> bool:
     """Handle a gen2 Pub/Sub CloudEvent; API errors propagate for Eventarc retry."""
     try:
         message = event.data["message"]
@@ -40,7 +41,8 @@ def handle_event(event, *, project_id: str, budget_name: str, disable=disable_bi
     except (KeyError, TypeError, ValueError, binascii.Error):
         logging.warning("Ignoring malformed budget notification")
         return False
-    if not isinstance(payload, dict) or not should_disable(payload, budget_name=budget_name):
+    if not isinstance(payload, dict) or not should_disable(payload, budget_name=budget_name,
+                                                            currency=currency):
         return False
     if not project_id:
         raise ValueError("TARGET_PROJECT_ID is required")

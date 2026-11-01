@@ -76,16 +76,18 @@ trial account and stops its resources. There is no automatic paid upgrade or Goo
 Cloud usage charge during that unupgraded trial. See Google's
 [Free Trial terms and expiry behavior](https://docs.cloud.google.com/free/docs/free-cloud-features).
 
-The project budget is **300 USD cumulative**, starting on the first day of the bootstrap
+The project budget is **300 USD cumulative by default** (`GCP_BUDGET_UNITS`, `GCP_BUDGET_CURRENCY`), starting on the first day of the bootstrap
 month, with no end date or monthly reset. Re-running bootstrap preserves its original
 start date. All credits are excluded from the budget calculation, so the budget measures
 gross project consumption even while promotional credit pays for it. Thresholds are
 50%, 90% and 100%, with default billing-recipient emails and Pub/Sub notifications.
-Google requires budgets to use the billing account currency; bootstrap rejects a
-non-USD account rather than silently creating a different currency budget. See
+Google requires budgets to use the billing account currency; bootstrap rejects an
+account whose currency differs from `GCP_BUDGET_CURRENCY` rather than silently creating
+a different currency budget. For a EUR trial account set `GCP_BUDGET_CURRENCY=EUR` and
+`GCP_BUDGET_UNITS` to the EUR value of the trial credit. See
 [budget flags](https://docs.cloud.google.com/sdk/gcloud/reference/billing/budgets/create).
 
-The gen2 Python budget guard validates the configured budget name, USD currency and
+The gen2 Python budget guard validates the configured budget name, currency and
 finite actual amounts, then unlinks billing from its configured project when
 `costAmount >= budgetAmount`. Forecasts and other budget names do not trigger shutdown.
 The target project never comes from the notification. Already-disabled billing is a
@@ -127,7 +129,7 @@ Review and merge these changes to `main` through your normal process before usin
 new workflows. Nothing in this change commits, pushes, runs a cloud CLI or alters Render.
 
 1. Confirm in the billing console that this is the new **unupgraded** trial, that its
-   currency is USD, and note its real signup/expiry date. Generate a project id once;
+   currency (set `GCP_BUDGET_CURRENCY`/`GCP_BUDGET_UNITS` to match), and note its real signup/expiry date. Generate a project id once;
    retain the same exported value for preview, apply and future owner commands:
 
    ```bash
@@ -209,7 +211,7 @@ new workflows. Nothing in this change commits, pushes, runs a cloud CLI or alter
    This outage simulation requires no cloud shutdown. Check keyboard focus, screen-reader
    announcements and both system color themes.
 
-5. Verify the budget's project scope, USD 300 amount, cumulative period, excluded credits,
+5. Verify the budget's project scope, amount and currency, cumulative period, excluded credits,
    thresholds, publisher grant and Eventarc delivery in the console. Check guard logs
    for received notifications. A synthetic event at/above the threshold **actually unlinks
    billing**; use local unit tests for that decision, not a live threshold message.

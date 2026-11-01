@@ -10,7 +10,7 @@ import pytest
 
 from deploy.gcp.budget_guard.guard import disable_billing, handle_event, should_disable
 
-BUDGET = "PulseGuard trial USD 300"
+BUDGET = "PulseGuard trial 300 USD"
 
 
 def payload(**changes):
@@ -38,6 +38,13 @@ def test_actual_spend_threshold(cost, expected):
 ])
 def test_ignores_invalid_unrelated_and_forecast_only_messages(changes):
     assert not should_disable(payload(**changes), budget_name=BUDGET)
+
+
+def test_configured_currency_is_required():
+    eur = payload(currencyCode="EUR", costAmount=255, budgetAmount=255)
+    assert should_disable(eur, budget_name=BUDGET, currency="EUR")
+    assert not should_disable(eur, budget_name=BUDGET)
+    assert not should_disable(payload(), budget_name=BUDGET, currency="EUR")
 
 
 def test_missing_amount_does_not_disable():
