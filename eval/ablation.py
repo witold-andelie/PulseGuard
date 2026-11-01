@@ -254,7 +254,8 @@ def run_ablation(
                 limits: list[dict[str, Any]] = []
                 items = build_hard_evidence(finding, _clean_trace(trace, code), code=clean,
                                            analysis_limits=limits)
-                block = render_block(items, clean, sink_line=finding.line, analysis_limits=limits)
+                sink_line = trace.sink.line if trace and trace.sink else finding.line
+                block = render_block(items, clean, sink_line=sink_line, analysis_limits=limits)
             metadata: dict[str, Any] = {}
             result = adjudicate(finding, block, llm=llm, metadata=metadata)
             confirmed = (result.score >= 0.7 if mode == "llm" else

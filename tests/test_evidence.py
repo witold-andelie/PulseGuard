@@ -16,7 +16,8 @@ def test_sink_function_excerpt_has_real_lines_without_ground_truth():
     assert 'request.args.get("id")' in excerpt
     assert "@vuln" not in excerpt
     assert "DELIBERATELY VULNERABLE" not in excerpt
-    assert "def get_db" not in excerpt and 'app.run' not in excerpt
+    assert "def get_db" in excerpt  # Directly called, same-module context.
+    assert 'app.run' not in excerpt
     assert "# @vuln sqli" in code
 
 

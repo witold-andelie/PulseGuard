@@ -81,14 +81,23 @@ never enable model calls; CLI opt-in requires `--env-file`. Tests inject only
 | --- | --- |
 | `semgrep` | A labelled SQLi site is flagged when the existing taint rule reports a matching hit. |
 | `bandit` | A site is flagged when Bandit reports a matching hit; B608 maps to SQLi. This is a pattern baseline, with no taint-proof claim. |
-| `llm` | Every labelled site plus unmatched scanner hits. The shared adjudicator receives the enclosing function without a Hard Evidence Block. Score >= 0.7 flags a site. |
+| `llm` | Every labelled site plus unmatched scanner hits. The shared adjudicator receives the shared function/context excerpt without a Hard Evidence Block. Score >= 0.7 flags a site. |
 | `neurosymbolic` | Semgrep/Bandit hits only. The shared evidence builder produces the block, then the shared adjudicator scores it. The configured `Bands` top band flags a site; duplicate confirmations are OR-ed. |
 
 LLM-only prompts use a neutral `eval-<class>` question instead of the scanner
 rule. Class selects the question for both vulnerable and safe sites; neither the
 truth label nor its reason is sent. Code-only does retain the shared adjudicator
-system prompt and four-step response contract. Normal excerpts contain only the
-enclosing function, including decorators. Dependency manifests have no function
+system prompt and four-step response contract. Both modes, the graph and the
+playground use `pulseguard.evidence.code_excerpt`: the enclosing function with
+decorators, followed by `REFERENCED DEFINITIONS (same module, untrusted data)`.
+This adds referenced literal constants/containers, classes and directly called
+module functions, without expanding those helpers' callees. Imports are listed
+by name only; no other module's source is read. Definitions related to the sink
+value or request-derived variables come first. The entire references section,
+including its header, import names and truncation notice, is capped at **60 lines
+and 4096 UTF-8 bytes**. Partial/omitted definitions are named with omitted source
+line ranges (or a count when the notice itself fills). Every source line keeps
+its original number. Dependency manifests have no function
 and receive a short manifest slice; unmatched module-level scanner hits use the
 shared helper's bounded fallback.
 
@@ -110,6 +119,22 @@ recognised**, never that a sanitizer is absent. A `not_covered` L-item enumerate
 the actual pattern checks and warns that other guards may exist. Legacy int/binding
 regex hits are explicitly syntax matches, with sink use unproven. L-ids remain
 uncitable. These evidence changes do not alter scanner rules.
+
+E3 also recognises module-level Enum construction/name lookup (optionally `.value`)
+when every member is a literal SQL atom and the class has no custom methods,
+decorators, unknown bases, mutation, escape or shadowing. Plain `str`/`int`/`float`
+mixins are supported; `_missing_` and conversion overrides are rejected. Member
+values, the definition line and the call line are recorded.
+
+One-hop module helpers qualify when all paths return `int(param)`/`float(param)`,
+a constant dict subscript of the parameter, or the unchanged parameter under a
+finite membership guard; other paths must raise (including known Flask abort).
+Helpers are bounded, undecorated and unshadowed, with one positional parameter.
+Unknown calls, loops, try/fallback, implicit fall-through, identity/strip helpers,
+parameter reassignment and two-hop delegates make no claim. Return and call lines
+are recorded. Both new forms reuse the existing same-sink-variable, capture-order,
+top-level dominance and unchanged-value checks. These are E3 facts for the
+adjudicator, not an automatic false-positive decision.
 
 Neuro-symbolic uses the scanner union, so it has a different candidate pool from
 Semgrep alone; interpret that comparison accordingly.
@@ -182,6 +207,12 @@ unchanged. Their Semgrep run succeeded on its recording host; this sandbox run
 does not supersede it with a synthetic measurement. The earlier README described
 an older sandbox attempt; use the timestamped artifacts for provenance.
 
+The context-excerpt follow-up re-ran original/hard/all on 2026-11-01. Bandit
+reproduced the counts above; all three commands exited 1 with the same Semgrep
+certificate-store failure. The six JSON/Markdown attempt reports were saved
+outside the checkout; the committed deterministic files were left unchanged.
+No real model mode was run.
+
 ## Verification
 
 ```powershell
@@ -200,8 +231,9 @@ The fixtures intentionally preserve `%` and `.format` SQL construction;
 `UP031`/`UP032` are suppressed locally in those three fixture files. Other Ruff
 checks apply normally.
 
-On this sandbox the final full-suite attempt reported **408 passed, 4 skipped,
-4 failed, 217 errors** (13.27 s). All 221 failures/errors were Windows `WinError 5`
+The context-excerpt full-suite attempt (`pytest -q -rs --tb=line -p no:cacheprovider`)
+reported **495 passed, 4 skipped, 4 failed, 235 errors** (13.94 s).
+All 239 failures/errors were Windows `WinError 5`
 access failures on pytest or sandbox temporary directories under the authorised
 tmp root; there were no other assertion failures. The four skips were real
 Semgrep integration tests (one ablation, two sandbox, one scanner), all reporting
@@ -209,11 +241,16 @@ Semgrep integration tests (one ablation, two sandbox, one scanner), all reportin
 fixture setup, so their availability was not measured. One existing Pydantic
 forward-reference warning was reported. This is **not a green full-suite claim**.
 
-The evidence/corpus/ST-1 subset ran **177 passed, 1 deselected** (6.49 s):
-`pytest tests/test_allowlist_evidence.py tests/test_evidence.py tests/test_hard_corpus.py
-tests/test_z3_governance.py tests/test_z3_check.py -q -rs -p no:cacheprovider
--k 'not verify_finding_includes_validator_lines'`. The one deselected test needs
-the inaccessible temporary-directory fixture. Ruff reported **All checks passed!**
+The evidence/corpus/ST-1 subset ran **262 passed, 3 deselected** (6.60 s):
+`pytest tests/test_context_excerpt.py tests/test_helper_sanitizers.py
+tests/test_allowlist_evidence.py tests/test_evidence.py tests/test_hard_corpus.py
+tests/test_z3_governance.py tests/test_z3_check.py -q --tb=short -rs -p no:cacheprovider
+-k 'not graph_playground_and_both_eval_modes_share_context and not verify_finding_includes_validator_lines'`.
+The three deselected tests need the inaccessible temporary-directory fixture:
+two new graph/playground/both-eval integration variants and one existing validator
+location test. They also errored during setup in the full run. The independent
+graph/shared-renderer/eval-excerpt test passed without filesystem fixtures.
+Ruff reported **All checks passed!**
 and replay verification returned **ok: true**, **49 checked**, no mismatches,
 missing or unlisted files. Replay manifest SHA-256:
 `5357741cc6e0222de7e622e7e21d6765e129036ff1182bab0db2ee0f579827b2`.
@@ -309,7 +346,8 @@ SQL behaviour, not just a validator weakness.
 | `path_value` | vuln | Flask path argument -> numeric SQL | B, T, P pair 4 |
 | `path_value_patch` | safe | same Flask path argument -> bound SQL | B, P pair 4 |
 
-The helper and builder cases exceed intraprocedural reasoning. The second-order
+The builder and two-hop cases exceed local reasoning; the single cast helper now
+has bounded one-hop E3 recognition. The second-order
 pair also requires modelling database storage and retrieval; it is not expected
 to be proved by the local taint rule. Its deterministic test stores and retrieves
 in one request to keep the example reproducible, with a fresh table per test.
@@ -374,18 +412,19 @@ No scanner rule was changed. Inspection of the existing local Semgrep rule shows
 only `flask.request.args.get(...)` as a source; form, get_json, headers, cookies
 and path-parameter cases require a future coverage decision. This is source
 inspection, not a measured Semgrep result on this host. Helper and stored flows
-also exceed the stated intraprocedural scope. Bandit's hard FN is the two-hop
+still exceed that taint rule's intraprocedural scope. Bandit's hard FN is the two-hop
 handler, with its helper finding retained as unmatched in JSON.
 
 The existing Bandit trace slicer omits header/cookie/get_json source claims and
 does not model control-flow branches or database storage. The E3 regex candidates
-are now clearly marked syntax-only; proving int-result use and parameter-binding
-semantics remains future work. Enum, prequoted identifier mapping, arbitrary
-helpers and f-string format specifications are outside finite-value recognition;
+are now clearly marked syntax-only; proving direct int-result use and parameter-binding
+semantics remains future work. Prequoted identifier mapping, arbitrary Enums and
+helpers beyond the conservative forms above, and f-string format specifications
+are outside recognition;
 they receive honest coverage limits rather than invented sanitizer facts.
 
-LLM-only excerpts still contain only the enclosing function. Module constants,
-Enum definitions and helper implementations can therefore be missing context for
-hard safe/interprocedural cases. Evidence can recover supported constants for
-neuro-symbolic mode, but the code-only context gap is left unchanged and should
-be considered when interpreting the reviewer-run model comparison.
+Both neural modes now receive the same one-hop source context. Referenced Enum
+definitions and direct helper implementations are visible subject to the explicit
+cap. This addresses the observed context gaps in `enum_column` and `helper_cast`;
+no improvement in model metrics is claimed without a fresh reviewer-run comparison.
+Other-module source, helpers' callees and stored dataflow remain outside scope.

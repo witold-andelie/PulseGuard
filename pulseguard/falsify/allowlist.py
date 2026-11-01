@@ -1,4 +1,4 @@
-"""Conservative finite-value E3 facts; this is not a general Python safety proof.
+"""Conservative finite-value and one-hop cast E3 facts, not a Python safety proof.
 
 Only literal SQL atoms are recognised. Control flow, captures and mutations use
 the same local, unchanged-value discipline as ST-1 validator dominance.
@@ -168,8 +168,236 @@ def _sink_values(fn: ast.AST, sink_line: int) -> list[tuple[str, int]]:
         return []
 
 
+def _unshadowed(tree: ast.Module, name: str, definition: ast.AST | None = None) -> bool:
+    """Fail closed on any competing binding, including in another local scope."""
+    for node in ast.walk(tree):
+        if node is definition:
+            continue
+        if isinstance(node, ast.Name) and node.id == name and isinstance(
+            node.ctx, (ast.Store, ast.Del)
+        ):
+            return False
+        if isinstance(node, ast.arg) and node.arg == name:
+            return False
+        if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
+            node.ctx, (ast.Store, ast.Del)
+        ) and any(isinstance(n, ast.Name) and n.id == name for n in ast.walk(node.value)):
+            return False
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name == name:
+                return False
+        if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
+            return False
+        if isinstance(node, (ast.Import, ast.ImportFrom)) and any(
+            a.name == '*' or
+            (a.asname or (a.name.split('.')[0] if isinstance(node, ast.Import) else a.name)) == name
+            for a in node.names
+        ):
+            return False
+        if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name == name:
+            return False
+    return True
+
+
+def _module_definition(tree: ast.Module, name: str) -> ast.AST | None:
+    definitions = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))
+                   and n.name == name]
+    if len(definitions) != 1 or not _unshadowed(tree, name, definitions[0]):
+        return None
+    # Reject aliases/escapes and class mutation, including E.MEMBER._value_ writes.
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Load):
+            parent = parents.get(node)
+            if isinstance(parent, ast.Call) and parent.func is node:
+                continue
+            if isinstance(parent, ast.Subscript) and parent.value is node and isinstance(
+                parent.ctx, ast.Load
+            ):
+                continue
+            return None
+    return definitions[0]
+
+
+def _enum_base(tree: ast.Module, base: ast.AST) -> bool:
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+
+    def unchanged_import(name: str, definition: ast.AST, namespace: bool = False) -> bool:
+        if not _unshadowed(tree, name, definition):
+            return False
+        for use in ast.walk(tree):
+            if not isinstance(use, ast.Name) or use.id != name or not isinstance(use.ctx, ast.Load):
+                continue
+            reference = use
+            if namespace:
+                reference = parents.get(use)
+                if not isinstance(reference, ast.Attribute) or reference.attr != 'Enum':
+                    return False
+            parent = parents.get(reference)
+            if not isinstance(parent, ast.ClassDef) or reference not in parent.bases:
+                return False
+        return True
+
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module == 'enum' and node.level == 0:
+            for alias in node.names:
+                name = alias.asname or alias.name
+                if (alias.name == 'Enum' and isinstance(base, ast.Name) and base.id == name
+                        and unchanged_import(name, node)):
+                    return True
+        if isinstance(node, ast.Import) and isinstance(base, ast.Attribute) and base.attr == 'Enum':
+            for alias in node.names:
+                name = alias.asname or alias.name
+                if (alias.name == 'enum' and isinstance(base.value, ast.Name)
+                        and base.value.id == name and unchanged_import(name, node, namespace=True)):
+                    return True
+    return False
+
+
+def _enum_fact(value: ast.AST, tree: ast.Module) -> dict[str, Any] | None:
+    if isinstance(value, ast.Attribute) and value.attr == 'value':
+        value = value.value
+    if (isinstance(value, ast.Call) and len(value.args) == 1 and not value.keywords
+            and not isinstance(value.args[0], ast.Starred)):
+        constructor = value.func
+    elif isinstance(value, ast.Subscript):
+        constructor = value.value
+    else:
+        return None
+    if not isinstance(constructor, ast.Name):
+        return None
+    enum = _module_definition(tree, constructor.id)
+    if not isinstance(enum, ast.ClassDef) or enum.decorator_list or enum.keywords:
+        return None
+    if sum(_enum_base(tree, b) for b in enum.bases) != 1:
+        return None
+    for base in enum.bases:
+        if not _enum_base(tree, base) and not (
+            isinstance(base, ast.Name) and base.id in {'str', 'int', 'float'}
+            and _unshadowed(tree, base.id)
+        ):
+            return None
+    members = []
+    for statement in enum.body:
+        if isinstance(statement, ast.Pass) or (isinstance(statement, ast.Expr)
+                                              and isinstance(statement.value, ast.Constant)
+                                              and isinstance(statement.value.value, str)):
+            continue
+        targets = (statement.targets if isinstance(statement, ast.Assign) else
+                   [statement.target] if isinstance(statement, ast.AnnAssign) else [])
+        if (len(targets) != 1 or not isinstance(targets[0], ast.Name)
+                or targets[0].id.startswith('_') or not _literal(statement.value)
+                or not _sql_atom(statement.value.value)):
+            return None
+        members.append(statement.value.value)
+    if not members:
+        return None
+    members = sorted(set(members), key=str)
+    return {'rule': 'allow-list Enum', 'members': members, 'enum': enum.name,
+            'definition_line': enum.lineno, 'line': value.lineno,
+            'evidence': f"Enum {enum.name} members {{{','.join(map(str, members))}}} "
+                        f"@ L{enum.lineno}, called @ L{value.lineno}"}
+
+
+def _helper_fact(value: ast.AST, tree: ast.Module) -> dict[str, Any] | None:
+    if (not isinstance(value, ast.Call) or not isinstance(value.func, ast.Name)
+            or len(value.args) != 1 or value.keywords or isinstance(value.args[0], ast.Starred)):
+        return None
+    helper = _module_definition(tree, value.func.id)
+    if not isinstance(helper, ast.FunctionDef) or helper.decorator_list:
+        return None
+    args = helper.args
+    parameters = [*args.posonlyargs, *args.args]
+    if (len(parameters) != 1 or args.vararg or args.kwarg or args.kwonlyargs or args.defaults
+            or len(list(ast.walk(helper))) > 200):
+        return None
+    param = parameters[0].arg
+    if any(isinstance(n, ast.Name) and n.id == param and isinstance(n.ctx, (ast.Store, ast.Del))
+           for n in ast.walk(helper)):
+        return None
+    work = 0
+
+    def paths(body: list[ast.stmt], allowed: list[Any] | None) -> list[dict[str, Any]]:
+        nonlocal work
+        work += 1
+        if not body or work > 256:
+            raise ValueError  # Fall-through (implicit None) is outside the helper contract.
+        statement, *rest = body
+        if isinstance(statement, ast.Raise):
+            return []
+        if isinstance(statement, ast.Expr) and _guard_exits(tree, helper, [statement]):
+            return []
+        if isinstance(statement, ast.Return):
+            result = statement.value
+            if (isinstance(result, ast.Call) and isinstance(result.func, ast.Name)
+                    and result.func.id in {'int', 'float'} and _unshadowed(tree, result.func.id)
+                    and len(result.args) == 1 and not result.keywords
+                    and isinstance(result.args[0], ast.Name) and result.args[0].id == param):
+                return [{'cast': result.func.id, 'line': statement.lineno}]
+            if isinstance(result, ast.Name) and result.id == param and allowed is not None:
+                return [{'members': allowed, 'line': statement.lineno}]
+            if (isinstance(result, ast.Subscript) and isinstance(result.slice, ast.Name)
+                    and result.slice.id == param):
+                members = _members(_constant(result.value, tree, helper, statement.lineno),
+                                   mapping=True)
+                if members is not None:
+                    return [{'members': members, 'line': statement.lineno}]
+            raise ValueError
+        if isinstance(statement, ast.If):
+            test = statement.test
+            if any(isinstance(n, (ast.Call, ast.Attribute, ast.Subscript, ast.NamedExpr,
+                                  ast.Lambda, ast.Await, ast.Yield)) for n in ast.walk(test)):
+                raise ValueError
+            positive = negative = allowed
+            if (isinstance(test, ast.Compare) and len(test.ops) == 1
+                    and isinstance(test.left, ast.Name) and test.left.id == param
+                    and isinstance(test.ops[0], (ast.In, ast.NotIn))):
+                members = _members(_constant(test.comparators[0], tree, helper, statement.lineno))
+                if members is not None:
+                    members = members if allowed is None else [m for m in members if m in allowed]
+                    if isinstance(test.ops[0], ast.In):
+                        positive = members
+                    else:
+                        negative = members
+            return paths(statement.body + rest, positive) + paths(statement.orelse + rest, negative)
+        if isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+            if (len(targets) != 1 or not isinstance(targets[0], ast.Name)
+                    or targets[0].id == param or (_members(statement.value) is None
+                        and _members(statement.value, mapping=True) is None)):
+                raise ValueError
+        elif not (isinstance(statement, ast.Pass) or (isinstance(statement, ast.Expr)
+                                                     and isinstance(statement.value, ast.Constant)
+                                                     and isinstance(statement.value.value, str))):
+            raise ValueError
+        return paths(rest, allowed)
+
+    try:
+        returns = paths(helper.body, None)
+    except ValueError:
+        return None
+    if not returns:
+        return None
+    casts = sorted({r['cast'] for r in returns if 'cast' in r})
+    members = sorted({m for r in returns for m in r.get('members', [])}, key=str)
+    descriptions = [f"{r['cast']}() cast in helper {helper.name} @ L{r['line']}" if 'cast' in r
+                    else f"allow-list in helper {helper.name} members "
+                         f"{{{','.join(map(str, r['members']))}}} @ L{r['line']}" for r in returns]
+    fact = {'rule': 'cast in helper' if casts else 'allow-list in helper',
+            'helper': helper.name, 'definition_line': helper.lineno, 'line': value.lineno,
+            'return_lines': sorted({r['line'] for r in returns}),
+            'evidence': '; '.join(descriptions) + f", called @ L{value.lineno}"}
+    if casts:
+        fact['casts'] = casts
+        if members:
+            fact['allowlist_members'] = members
+    else:
+        fact['members'] = members
+    return fact
+
+
 def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
-    """Prove finite membership/lookup/conditional facts or return no facts on doubt."""
+    """Prove finite values/one-hop casts with shared sink dominance; silence on doubt."""
     try:
         tree = ast.parse(code)
     except SyntaxError:
@@ -184,6 +412,7 @@ def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
     for statement in fn.body:
         rule = "allow-list membership guard"
         members = None
+        transform = None
         name = None
         after = statement.end_lineno or statement.lineno
         after_node = statement
@@ -210,7 +439,11 @@ def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
                 continue
             name = targets[0].id
             value = statement.value
-            if isinstance(value, ast.IfExp):
+            transform = _enum_fact(value, tree) or _helper_fact(value, tree)
+            if transform is not None:
+                rule = transform['rule']
+                members = transform.get('members')
+            elif isinstance(value, ast.IfExp):
                 test = value.test
                 if (not isinstance(test, ast.Compare) or len(test.ops) != 1
                         or not isinstance(test.ops[0], ast.In)
@@ -247,7 +480,7 @@ def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
                     if members is not None:
                         members = sorted(set([*members, default.value]), key=str)
                 rule = "allow-list dict lookup"
-        if name is None or members is None:
+        if name is None or (members is None and transform is None):
             continue
         captures = [line for var, line in values if var == name]
         if not captures or min(captures) <= after:
@@ -264,6 +497,10 @@ def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
         if not _value_unchanged(fn, name, after, sink_line, permitted_calls=format_calls,
                                 after_node=after_node):
             continue
-        facts.append({"rule": rule, "line": statement.lineno, "variable": name,
-                      "members": members})
+        fact = {"rule": rule, "line": statement.lineno, "variable": name}
+        if transform is not None:
+            fact.update(transform)
+        else:
+            fact['members'] = members
+        facts.append(fact)
     return facts
