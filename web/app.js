@@ -1062,10 +1062,32 @@ let playgroundExamples = [];
 let playgroundBound = false;
 const PLAYGROUND_MAX_BYTES = 6144;
 const PLAYGROUND_MAX_LINES = 200;
+const PLAYGROUND_TIER_LABELS = {
+  full: "Full analysis",
+  grammar: "Grammar-level analysis — partial coverage",
+  llm_only: "LLM-only — advisory, no hard evidence",
+};
+const PLAYGROUND_LANG_LABELS = {
+  auto: "Auto-detect", python: "Python", java: "Java", javascript: "JavaScript",
+  typescript: "TypeScript", go: "Go", csharp: "C#", c: "C", cpp: "C++",
+  sql: "SQL", cobol: "COBOL", sas: "SAS", plsql: "PL/SQL", unknown: "Unknown",
+};
 
 function playgroundModel() {
   const selected = document.querySelector("input[name='playground-model']:checked");
   return selected ? selected.value : "muse";
+}
+
+function playgroundLanguage() {
+  const node = $("playground-language");
+  return node && node.value ? node.value : "auto";
+}
+
+function playgroundTierBadge(tier) {
+  const label = PLAYGROUND_TIER_LABELS[tier] || PLAYGROUND_TIER_LABELS.full;
+  const node = element("p", label, "tier-badge " + (tier || "full"));
+  node.setAttribute("role", "status");
+  return node;
 }
 
 function updatePlaygroundCounter() {
@@ -1108,12 +1130,31 @@ function renderPlaygroundModel(root, result) {
   const heading = result.model_label || result.model_id || "Model";
   const column = element("article", undefined, "panel playground-column");
   column.append(element("h3", heading));
+  const tier = result.tier || "full";
+  column.append(playgroundTierBadge(tier));
+  if (result.language_label || result.language) {
+    column.append(element("p",
+      "Language: " + (result.language_label || PLAYGROUND_LANG_LABELS[result.language] || result.language),
+      "caption"));
+  }
   if (result.available === false || !result.model_called) {
     column.append(element("p",
       result.model_skipped_reason
         ? "Model not called: " + result.model_skipped_reason
         : "Model unavailable. Static analysis is shown below.",
       "notice limit"));
+  }
+  if (tier !== "full") {
+    const limitsFirst = playgroundSubpanel(column, "ANALYSIS LIMITS");
+    limitsFirst.classList.add("analysis-limits", "prominent");
+    limitsFirst.append(element("p",
+      "L-ids are not evidence. Coverage is not confidence. A limit is never “no risk”.", "caption"));
+    if (result.analysis_limits?.length) {
+      for (const limit of result.analysis_limits) {
+        limitsFirst.append(element("p", "[" + limit.id + "] Not covered (analysis limit) · "
+          + limit.check + ": " + limit.reason, "analysis-limit"));
+      }
+    } else missingNote(limitsFirst, "Analysis limits");
   }
   const guard = playgroundSubpanel(column, "Guard");
   if (result.guard?.flagged) {
@@ -1165,29 +1206,36 @@ function renderPlaygroundModel(root, result) {
     evidence.append(disclosure);
   }
 
-  const limits = playgroundSubpanel(column, "ANALYSIS LIMITS");
-  limits.classList.add("analysis-limits");
-  limits.append(element("p",
-    "L-ids are not evidence. Coverage is not confidence. A limit is never “no risk”.", "caption"));
-  if (result.analysis_limits?.length) {
-    for (const limit of result.analysis_limits) {
-      limits.append(element("p", "[" + limit.id + "] Not covered (analysis limit) · "
-        + limit.check + ": " + limit.reason, "analysis-limit"));
-    }
-  } else missingNote(limits, "Analysis limits");
+  if (tier === "full") {
+    const limits = playgroundSubpanel(column, "ANALYSIS LIMITS");
+    limits.classList.add("analysis-limits");
+    limits.append(element("p",
+      "L-ids are not evidence. Coverage is not confidence. A limit is never “no risk”.", "caption"));
+    if (result.analysis_limits?.length) {
+      for (const limit of result.analysis_limits) {
+        limits.append(element("p", "[" + limit.id + "] Not covered (analysis limit) · "
+          + limit.check + ": " + limit.reason, "analysis-limit"));
+      }
+    } else missingNote(limits, "Analysis limits");
+  }
 
   const z3 = playgroundSubpanel(column, "z3");
-  const z3info = result.z3 || {};
-  z3.append(element("p", "Result: " + recorded(z3info.result)
-    + (z3info.claim ? " (claim)" : " (no claim)")));
-  if (z3info.detail) z3.append(element("p", z3info.detail, "caption"));
-  if (result.dominance) {
-    z3.append(element("p", result.dominance.dominates
-      ? "Validator dominates the sink."
-      : "Dominance: " + recorded(result.dominance.reason)));
-  }
-  if (result.z3_veto === "applied") {
-    z3.append(element("p", "Symbolic veto applied. Confirmed was blocked.", "failed"));
+  if (tier !== "full" || !result.z3) {
+    z3.append(element("p",
+      "Constraint solving is not available for this language tier.", "notice limit"));
+  } else {
+    const z3info = result.z3 || {};
+    z3.append(element("p", "Result: " + recorded(z3info.result)
+      + (z3info.claim ? " (claim)" : " (no claim)")));
+    if (z3info.detail) z3.append(element("p", z3info.detail, "caption"));
+    if (result.dominance) {
+      z3.append(element("p", result.dominance.dominates
+        ? "Validator dominates the sink."
+        : "Dominance: " + recorded(result.dominance.reason)));
+    }
+    if (result.z3_veto === "applied") {
+      z3.append(element("p", "Symbolic veto applied. Confirmed was blocked.", "failed"));
+    }
   }
 
   const adjudication = playgroundSubpanel(column, "Adjudicator");
@@ -1247,6 +1295,12 @@ function renderPlaygroundResults(data) {
   root.append(element("p", data.label || playgroundConfig?.label
     || "Playground — static analysis + model adjudication; nothing is executed or stored.",
     "notice"));
+  root.append(playgroundTierBadge(data.tier || (data.results && data.results[0] && data.results[0].tier) || "full"));
+  if (data.language_label || data.language) {
+    root.append(element("p",
+      "Detected language: " + (data.language_label || PLAYGROUND_LANG_LABELS[data.language] || data.language),
+      "caption"));
+  }
   if (data.budget) {
     root.append(element("p", "Remaining model calls today: " + recorded(data.budget.remaining_model_calls)
       + " of " + recorded(data.budget.daily_model_calls) + ".", "notice limit"));
@@ -1274,6 +1328,9 @@ function bindPlayground() {
     const example = playgroundExamples.find((item) => item.id === id);
     if (example) {
       $("playground-code").value = example.code;
+      if (example.language && $("playground-language")) {
+        $("playground-language").value = example.language;
+      }
       updatePlaygroundCounter();
     }
   });
@@ -1290,7 +1347,11 @@ function bindPlayground() {
       const data = await api("/api/playground/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: $("playground-code").value, model: playgroundModel() }),
+        body: JSON.stringify({
+          code: $("playground-code").value,
+          model: playgroundModel(),
+          language: playgroundLanguage(),
+        }),
       });
       playgroundConfig = playgroundConfig || {};
       if (data.budget) {
@@ -1337,10 +1398,21 @@ async function showPlayground() {
       const payload = await api("/api/playground/examples");
       playgroundExamples = payload.examples || [];
       const select = $("playground-example");
+      const groups = new Map();
       for (const example of playgroundExamples) {
-        const option = element("option", example.title);
-        option.value = example.id;
-        select.append(option);
+        const lang = example.language || "python";
+        if (!groups.has(lang)) groups.set(lang, []);
+        groups.get(lang).push(example);
+      }
+      for (const [lang, items] of groups) {
+        const group = document.createElement("optgroup");
+        group.label = PLAYGROUND_LANG_LABELS[lang] || lang;
+        for (const example of items) {
+          const option = element("option", example.title + " · " + (example.tier || ""));
+          option.value = example.id;
+          group.append(option);
+        }
+        select.append(group);
       }
     } catch (error) {
       announce("Playground examples unavailable.");

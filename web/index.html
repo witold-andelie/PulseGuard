@@ -57,7 +57,7 @@
         <div>
           <p class="eyebrow">Paste · analyse · inspect</p>
           <h1 id="heading-playground" tabindex="-1">Playground</h1>
-          <p class="lede">Paste a Flask Python snippet. PulseGuard runs Guard, Semgrep, Bandit, Hard Evidence, z3 and a real adjudicator. Nothing is executed or stored.</p>
+          <p class="lede">Paste a snippet in Python, Java, JavaScript, Go, C#, C, C++, SQL, COBOL, SAS or related languages. PulseGuard runs Guard, then a language-tiered static path and a real adjudicator. Nothing is executed or stored.</p>
         </div>
       </div>
       <p class="notice" id="playground-banner">Playground — static analysis + model adjudication; nothing is executed or stored.</p>
@@ -65,15 +65,37 @@
 
       <h2 id="heading-playground-code">Snippet</h2>
       <form id="playground-form" class="panel">
-        <label for="playground-example">Built-in example</label>
-        <select id="playground-example">
-          <option value="">Choose an example…</option>
-        </select>
-        <label for="playground-code">Python (Flask) snippet</label>
+        <div class="playground-controls">
+          <div>
+            <label for="playground-example">Built-in example</label>
+            <select id="playground-example">
+              <option value="">Choose an example…</option>
+            </select>
+          </div>
+          <div>
+            <label for="playground-language">Language</label>
+            <select id="playground-language">
+              <option value="auto" selected>Auto-detect</option>
+              <option value="python">Python</option>
+              <option value="java">Java</option>
+              <option value="javascript">JavaScript</option>
+              <option value="typescript">TypeScript</option>
+              <option value="go">Go</option>
+              <option value="csharp">C#</option>
+              <option value="c">C</option>
+              <option value="cpp">C++</option>
+              <option value="sql">SQL</option>
+              <option value="cobol">COBOL</option>
+              <option value="sas">SAS</option>
+              <option value="plsql">PL/SQL</option>
+            </select>
+          </div>
+        </div>
+        <label for="playground-code">Snippet</label>
         <textarea id="playground-code" name="code" rows="16" spellcheck="false" autocomplete="off"
           aria-describedby="playground-counter playground-caps"></textarea>
         <p id="playground-counter" class="caption">0 / 6144 bytes · 0 / 200 lines</p>
-        <p id="playground-caps" class="caption">UTF-8 text, at most 6 KB and 200 lines, must parse as Python. Ground-truth annotations are stripped before a model sees the text.</p>
+        <p id="playground-caps" class="caption">UTF-8 text, at most 6 KB and 200 lines. Python receives full analysis; Java, JavaScript, TypeScript, Go, C#, C, C++ and SQL receive grammar-level analysis; COBOL, SAS and others are LLM-only advisory. Ground-truth annotations are stripped before a model sees the text.</p>
         <fieldset>
           <legend>Model</legend>
           <label><input type="radio" name="playground-model" value="muse" checked> Meta Muse Spark</label>
@@ -137,7 +159,13 @@
 
       <section>
         <h2>Playground</h2>
-        <p>The Playground accepts a pasted Flask snippet, size-capped, and runs the same non-executing analysis path: Guard, Semgrep, Bandit, Hard Evidence, z3, adjudication and citation checks. Submitted code is never executed or stored. When model keys or the daily budget are missing, static analysis still runs and is labelled as such.</p>
+        <p>The Playground accepts a pasted snippet, size-capped, and never executes or stores it. Language tiers decide what the analysis can prove:</p>
+        <ul>
+          <li><strong>Full analysis</strong> (Python) — Guard, Semgrep, Bandit, Hard Evidence E1–E6, z3, adjudication, citation checks and the z3 veto. This is the only tier that can confirm a finding with sanitizer facts and constraint solving.</li>
+          <li><strong>Grammar-level analysis — partial coverage</strong> (Java, JavaScript, TypeScript, Go, C#, C, C++, SQL) — tree-sitter excerpt, Semgrep taint where rules exist, E1/E2 when the source call is confirmed on that line. Sanitizer recognition and z3 are not available. For C and C++, memory-safety classes (buffer overflow, format string) are not analysed yet.</li>
+          <li><strong>LLM-only — advisory, no hard evidence</strong> (COBOL, SAS, PL/SQL, parse failures) — the model sees an excerpt with no E-items. The verdict is advisory and would not reach remediation.</li>
+        </ul>
+        <p>When model keys or the daily budget are missing, static analysis still runs and is labelled as such.</p>
       </section>
 
       <section>

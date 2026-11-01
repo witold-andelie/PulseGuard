@@ -149,8 +149,11 @@ def test_controls_have_accessible_names():
     assert 'for", "approver-name"' in JS or "approver-name" in JS
     assert 'for="playground-code"' in HTML
     assert 'for="playground-example"' in HTML
+    assert 'for="playground-language"' in HTML
+    assert 'id="playground-language"' in HTML
     assert 'id="playground-analyze"' in HTML
     assert "Analyze" in HTML
+    assert "Auto-detect" in HTML
 
 
 def test_no_sprint_labels_in_web():
@@ -196,6 +199,18 @@ def test_required_behaviours_and_missing_key_wording():
     assert "Show the exact block sent to the model" in JS
     assert "JSON.stringify(patch.sandbox_report" not in JS
     assert "function plural(" in JS
+    assert "Full analysis" in JS
+    assert "Grammar-level analysis — partial coverage" in JS
+    assert "LLM-only — advisory, no hard evidence" in JS
+    assert "optgroup" in JS
+    assert "playground-language" in JS
+    assert "analysis-limits" in JS and "prominent" in JS
+    assert "playground-controls" in CSS
+    assert "tier-badge" in CSS
+    assert "must parse as Python" not in HTML
+    assert 'value="c"' in HTML and 'value="cpp"' in HTML
+    assert "C++" in HTML
+    assert "memory-safety classes (buffer overflow, format string)" in HTML
 
 
 def test_static_files_and_recorded_case(tmp_path):
