@@ -38,8 +38,21 @@ uses the upstream design as a reference; it does not vendor the upstream source 
 
 ### revio
 
+The language-tier adapters below were checked against the same pinned commit in the local
+revio clone on 1 November 2026. Each adapted module retains Apache-2.0 attribution and names
+its source in its docstring. The upstream [license](../pulseguard/lang/REVIO_LICENSE.txt) and
+[NOTICE](../pulseguard/lang/REVIO_NOTICE.txt) are included. Grammar wheels remain dependencies;
+the SQL injection rules are new PulseGuard work, written without registry rule content.
+The C/C++ extension uses the same attributed loaders, function node tables and C declarator
+extraction approach. Its input-source tables, buffer/stream taint rules and fixtures are
+new PulseGuard code. No cppcheck runner or binary-analysis runtime is added.
+
 | Pre-existing source file | Source check | PulseGuard adaptation | Target and local status | Scope |
 | --- | --- | --- | --- | --- |
+| [`src/revio/layers/parser/language_support.py`](https://github.com/witold-andelie/revio/blob/1a528594d8c2a5f52041762c67f69d83eda22d02/src/revio/layers/parser/language_support.py) | local clone verified | Adapt lazy optional grammar loading and cached failures; share immutable grammars with a fresh parser per request. | [`pulseguard/lang/language_support.py`](../pulseguard/lang/language_support.py) - exists | languages |
+| [`src/revio/layers/parser/treesitter_generic.py`](https://github.com/witold-andelie/revio/blob/1a528594d8c2a5f52041762c67f69d83eda22d02/src/revio/layers/parser/treesitter_generic.py) | local clone verified | Adapt node-type tables, source traversal and innermost-function selection for snippets; add numbered, annotation-stripped, capped one-hop definitions. | [`pulseguard/lang/treesitter_generic.py`](../pulseguard/lang/treesitter_generic.py) - exists | languages |
+| [`src/revio/layers/parser/function_index.py`](https://github.com/witold-andelie/revio/blob/1a528594d8c2a5f52041762c67f69d83eda22d02/src/revio/layers/parser/function_index.py) | local clone verified | Adapt comment/string-aware token comparison, retaining variable and literal spelling for exact-line trace grounding; source tables are new. No dedup/similarity index is ported. | [`pulseguard/lang/trace_check.py`](../pulseguard/lang/trace_check.py) - exists | languages |
+| [`src/revio/detect/fingerprint.py`](https://github.com/witold-andelie/revio/blob/1a528594d8c2a5f52041762c67f69d83eda22d02/src/revio/detect/fingerprint.py) | local clone verified | Adapt explicit profile precedence and marker-based language selection from directories to pasted syntax. Generic, COBOL and SAS profiles inform graceful grammar/advisory tier routing; no profile classes or reasoning prompts are copied. | [`pulseguard/lang/detect.py`](../pulseguard/lang/detect.py) - exists | languages |
 | [`src/revio/agent/graph.py`](https://github.com/witold-andelie/revio/blob/1a528594d8c2a5f52041762c67f69d83eda22d02/src/revio/agent/graph.py) | verified | Rework the agent graph into guard, evidence, adjudication, sandbox and approval nodes. | [`pulseguard/agents/graph.py`](../pulseguard/agents/graph.py) - exists | S1 |
 | [`src/revio/agent/state.py`](https://github.com/witold-andelie/revio/blob/1a528594d8c2a5f52041762c67f69d83eda22d02/src/revio/agent/state.py) | verified | Define SecOpsState and accumulated case events for the security workflow. | [`pulseguard/agents/state.py`](../pulseguard/agents/state.py) - exists | S1 |
 | [`src/revio/agent/llm.py`](https://github.com/witold-andelie/revio/blob/1a528594d8c2a5f52041762c67f69d83eda22d02/src/revio/agent/llm.py) | verified | Use a configurable model-provider seam; the current client implements the compatible chat endpoint. | [`pulseguard/agents/llm.py`](../pulseguard/agents/llm.py) - exists | S1 |
@@ -170,4 +183,8 @@ quant-foundation-gat's broker is Redpanda speaking the Kafka API, not an Apache 
 its sample messages are synthetic market data. PulseGuard defines its own security-finding topic
 and contract. See [demo script](DEMO_SCRIPT.md) for the recorded/live presentation boundary.
 
-Verification totals: **55 distinct source files verified**, **1 literal source path not verified**. The latter is PerpPulse's root-relative `historical.rs`; `crates/perppulse/src/historical.rs` is verified. Every listed PulseGuard target was checked for local existence.
+Verification totals: **59 distinct source files verified** (55 via the original tree checks,
+4 language-layer sources also checked in the pinned local revio clone), **1 literal source
+path not verified**. The latter is PerpPulse's root-relative `historical.rs`;
+`crates/perppulse/src/historical.rs` is verified. Every listed PulseGuard target was checked
+for local existence.

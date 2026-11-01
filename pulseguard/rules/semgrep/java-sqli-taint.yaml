@@ -1,0 +1,33 @@
+# PulseGuard original rule, written for JDBC; no registry rule content reused.
+# PreparedStatement with constant SQL and bound ? values is a safe form:
+# only SQL-text arguments are sinks, never setString/setInt or execute() arguments.
+rules:
+  - id: java-sqli-taint
+    languages: [java]
+    mode: taint
+    severity: ERROR
+    message: Request input reaches JDBC SQL text; bind values with PreparedStatement placeholders.
+    metadata:
+      cwe: CWE-89
+      category: security
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getCookies()
+      - patterns:
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestParam(...) $TYPE $PARAM, ...) { ... }
+          - focus-metavariable: $PARAM
+      - patterns:
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestParam $TYPE $PARAM, ...) { ... }
+          - focus-metavariable: $PARAM
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $STMT.execute($Q, ...)
+              - pattern: $STMT.executeQuery($Q, ...)
+              - pattern: $STMT.executeUpdate($Q, ...)
+              - pattern: $STMT.executeLargeUpdate($Q, ...)
+              - pattern: $CONN.prepareStatement($Q, ...)
+          - focus-metavariable: $Q

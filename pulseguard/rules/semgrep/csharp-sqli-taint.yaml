@@ -1,0 +1,27 @@
+# PulseGuard original SqlCommand taint rule; no registry rule content reused.
+# Constant CommandText plus Parameters.Add is a safe form. Parameters.Add never
+# sanitizes concatenated CommandText; only the SQL expression is focused as sink.
+rules:
+  - id: csharp-sqli-taint
+    languages: [csharp]
+    mode: taint
+    severity: ERROR
+    message: Request input reaches SqlCommand SQL text; use placeholders and Parameters.Add.
+    metadata:
+      cwe: CWE-89
+      category: security
+    pattern-sources:
+      - pattern: Request.Query
+      - pattern: Request.Form
+      - patterns:
+          - pattern-inside: |
+              $RET $METHOD(..., [FromQuery] $TYPE $PARAM, ...) { ... }
+          - focus-metavariable: $PARAM
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: new SqlCommand($Q, ...)
+              - pattern: new System.Data.SqlClient.SqlCommand($Q, ...)
+              - pattern: new Microsoft.Data.SqlClient.SqlCommand($Q, ...)
+              - pattern: $CMD.CommandText = $Q
+          - focus-metavariable: $Q

@@ -1,0 +1,198 @@
+# PulseGuard original C++ SQL injection rule; no registry content reused.
+# Covers C database APIs and C++ input/string/stream construction. operator+
+# and ordinary assignments propagate through Semgrep's built-in dataflow.
+# OSS taint does not treat sprintf/strcpy-family or stream << output as the
+# call result, so the sink is the tainted copy/format/append/<< ARGUMENT when
+# that buffer later reaches a SQL execution call (statement ellipsis binds
+# the buffer). Constants and unrelated parameters are not sources.
+# Prepared/bound APIs are not sinks; no blanket string/object sanitizer is used.
+rules:
+  - id: cpp-sqli-taint
+    languages: [cpp]
+    mode: taint
+    severity: ERROR
+    message: External input reaches C++ SQL text; use a prepared statement and bound parameters.
+    metadata:
+      cwe: CWE-89
+      category: security
+    pattern-sources:
+      - pattern: argv
+        exact: true
+      - pattern: argv[...]
+      - pattern-either:
+          - pattern: getenv(...)
+          - pattern: std::getenv(...)
+        exact: true
+      - patterns:
+          - pattern-either:
+              - pattern: recv($FD, $BUF, ...)
+              - pattern: recvfrom($FD, $BUF, ...)
+              - pattern: read($FD, $BUF, ...)
+              - pattern: fgets($BUF, $SIZE, stdin)
+              - pattern: std::fgets($BUF, $SIZE, stdin)
+              - pattern: std::getline(std::cin, $BUF, ...)
+              - pattern: std::cin >> $BUF
+              - pattern: <... std::cin ...> >> $BUF
+          - focus-metavariable: $BUF
+        by-side-effect: true
+    pattern-propagators:
+      - patterns:
+          - pattern-either:
+              - pattern: sprintf($TO, ..., $FROM, ...)
+              - pattern: std::sprintf($TO, ..., $FROM, ...)
+              - pattern: snprintf($TO, $SIZE, ..., $FROM, ...)
+              - pattern: std::snprintf($TO, $SIZE, ..., $FROM, ...)
+              - pattern: strcat($TO, $FROM)
+              - pattern: std::strcat($TO, $FROM)
+              - pattern: strncat($TO, $FROM, $SIZE)
+              - pattern: std::strncat($TO, $FROM, $SIZE)
+              - pattern: $TO.append(..., $FROM, ...)
+              - pattern: $TO += $FROM
+          - metavariable-regex:
+              metavariable: $TO
+              regex: '^[A-Za-z_][A-Za-z0-9_]*$'
+        from: $FROM
+        to: $TO
+        by-side-effect: true
+      # Capture the stream identifier inside the left operand of a chained <<.
+      # Deep matching avoids treating (out << prefix) as a destination variable.
+      - patterns:
+          - pattern: <... $TO ...> << $FROM
+          - metavariable-regex:
+              metavariable: $TO
+              regex: '^[A-Za-z_][A-Za-z0-9_]*$'
+        from: $FROM
+        to: $TO
+        by-side-effect: true
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: mysql_query($DB, $Q)
+              - pattern: mysql_query($DB, $Q.c_str())
+              - pattern: mysql_real_query($DB, $Q, $LEN)
+              - pattern: mysql_real_query($DB, $Q.c_str(), $LEN)
+              - pattern: PQexec($DB, $Q)
+              - pattern: PQexec($DB, $Q.c_str())
+              - pattern: sqlite3_exec($DB, $Q, ...)
+              - pattern: sqlite3_exec($DB, $Q.c_str(), ...)
+              - pattern: sqlite3_exec($DB, $Q.str().c_str(), ...)
+              - pattern: OCIStmtPrepare($STMT, $ERROR, $Q, ...)
+              - pattern: SQLExecDirect($STMT, $Q, ...)
+              - pattern: SQLExecDirect($STMT, $Q.c_str(), ...)
+              - pattern: SQLExecDirect($STMT, $Q.str().c_str(), ...)
+          - focus-metavariable: $Q
+      - patterns:
+          - pattern-either:
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  std::sprintf($TO, ..., $FROM);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  std::snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  mysql_real_query($DB, $TO, ...);
+              - pattern: |
+                  std::snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  mysql_real_query($DB, $TO, ...);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  PQexec($DB, $TO);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, (const OraText *)$TO, ...);
+              - pattern: |
+                  std::snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, (const OraText *)$TO, ...);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  std::strcat($TO, $FROM);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO, ...);
+              - pattern: |
+                  std::strncat($TO, $FROM, $SIZE);
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO, ...);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, (const OraText *)$TO, ...);
+              - pattern: |
+                  std::strncat($TO, $FROM, $SIZE);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, (const OraText *)$TO, ...);
+              - pattern: |
+                  $TO.append($FROM);
+                  ...
+                  PQexec($DB, $TO.c_str());
+              - pattern: |
+                  $TO.append($FROM);
+                  ...
+                  mysql_query($DB, $TO.c_str());
+              - pattern: |
+                  $TO.append($FROM);
+                  ...
+                  sqlite3_exec($DB, $TO.c_str(), ...);
+              - pattern: |
+                  $TO += $FROM;
+                  ...
+                  PQexec($DB, $TO.c_str());
+              - pattern: |
+                  $TO += $FROM;
+                  ...
+                  mysql_query($DB, $TO.c_str());
+              - pattern: |
+                  $TO += $FROM;
+                  ...
+                  sqlite3_exec($DB, $TO.c_str(), ...);
+              - pattern: |
+                  <... $TO ...> << $FROM;
+                  ...
+                  sqlite3_exec($DB, $TO.str().c_str(), ...);
+              - pattern: |
+                  <... $TO ...> << $FROM;
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO.str().c_str(), ...);
+              - pattern: |
+                  <... $TO ...> << $FROM;
+                  ...
+                  mysql_query($DB, $TO.str().c_str());
+              - pattern: |
+                  <... $TO ...> << $FROM;
+                  ...
+                  mysql_query($DB, $TO.c_str());
+              - pattern: |
+                  <... $TO ...> << $FROM;
+                  ...
+                  PQexec($DB, $TO.str().c_str());
+              - pattern: |
+                  <... $TO ...> << $FROM;
+                  ...
+                  PQexec($DB, $TO.c_str());
+          - focus-metavariable: $FROM

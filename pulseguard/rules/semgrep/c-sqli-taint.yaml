@@ -1,0 +1,245 @@
+# PulseGuard original C SQL injection rule; no registry content reused.
+# I/O sources taint the destination buffer, not the byte-count return value.
+# OSS taint does not treat sprintf/strcpy-family output buffers as the call
+# result, so the sink is the tainted copy/format ARGUMENT when that buffer
+# later reaches a SQL execution call (statement ellipsis binds the buffer).
+# Constants and unrelated parameters are not sources, so they never fire.
+# Prepared/bound APIs are deliberately not sinks. Binding one value does not
+# sanitize SQL text sent to a direct execution API elsewhere.
+rules:
+  - id: c-sqli-taint
+    languages: [c]
+    mode: taint
+    severity: ERROR
+    message: External input reaches C SQL text; use a prepared statement and bound parameters.
+    metadata:
+      cwe: CWE-89
+      category: security
+    pattern-sources:
+      - pattern: argv
+        exact: true
+      - pattern: argv[...]
+      - pattern: getenv(...)
+        exact: true
+      - patterns:
+          - pattern-either:
+              - pattern: recv($FD, $BUF, ...)
+              - pattern: recvfrom($FD, $BUF, ...)
+              - pattern: read($FD, $BUF, ...)
+              - pattern: fgets($BUF, $SIZE, stdin)
+          - focus-metavariable: $BUF
+        by-side-effect: true
+    pattern-propagators:
+      - pattern: sprintf($TO, ..., $FROM, ...)
+        from: $FROM
+        to: $TO
+        by-side-effect: true
+      - pattern: snprintf($TO, $SIZE, ..., $FROM, ...)
+        from: $FROM
+        to: $TO
+        by-side-effect: true
+      - pattern: strcpy($TO, $FROM)
+        from: $FROM
+        to: $TO
+        by-side-effect: true
+      - pattern: strcat($TO, $FROM)
+        from: $FROM
+        to: $TO
+        by-side-effect: true
+      - pattern: strncat($TO, $FROM, $SIZE)
+        from: $FROM
+        to: $TO
+        by-side-effect: true
+      - pattern: memcpy($TO, $FROM, $SIZE)
+        from: $FROM
+        to: $TO
+        by-side-effect: true
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: mysql_query($DB, $Q)
+              - pattern: mysql_real_query($DB, $Q, $LEN)
+              - pattern: PQexec($DB, $Q)
+              - pattern: sqlite3_exec($DB, $Q, ...)
+              - pattern: OCIStmtPrepare($STMT, $ERROR, $Q, ...)
+              - pattern: SQLExecDirect($STMT, $Q, ...)
+          - focus-metavariable: $Q
+      - patterns:
+          - pattern-either:
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  mysql_real_query($DB, $TO, ...);
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  PQexec($DB, $TO);
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  SQLExecDirect($STMT, $TO, ...);
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO, ...);
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, $TO, ...);
+              - pattern: |
+                  sprintf($TO, ..., $FROM);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, (const OraText *)$TO, ...);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  mysql_real_query($DB, $TO, ...);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  PQexec($DB, $TO);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  SQLExecDirect($STMT, $TO, ...);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO, ...);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, $TO, ...);
+              - pattern: |
+                  snprintf($TO, $SIZE, ..., $FROM);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, (const OraText *)$TO, ...);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  mysql_real_query($DB, $TO, ...);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  PQexec($DB, $TO);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  SQLExecDirect($STMT, $TO, ...);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO, ...);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, $TO, ...);
+              - pattern: |
+                  strcat($TO, $FROM);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, (const OraText *)$TO, ...);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  mysql_real_query($DB, $TO, ...);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  PQexec($DB, $TO);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  SQLExecDirect($STMT, $TO, ...);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO, ...);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, $TO, ...);
+              - pattern: |
+                  strncat($TO, $FROM, $SIZE);
+                  ...
+                  OCIStmtPrepare($STMT, $ERROR, (const OraText *)$TO, ...);
+              - pattern: |
+                  strcpy($TO, $FROM);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  strcpy($TO, $FROM);
+                  ...
+                  mysql_real_query($DB, $TO, ...);
+              - pattern: |
+                  strcpy($TO, $FROM);
+                  ...
+                  PQexec($DB, $TO);
+              - pattern: |
+                  strcpy($TO, $FROM);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  strcpy($TO, $FROM);
+                  ...
+                  SQLExecDirect($STMT, $TO, ...);
+              - pattern: |
+                  strcpy($TO, $FROM);
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO, ...);
+              - pattern: |
+                  memcpy($TO, $FROM, $SIZE);
+                  ...
+                  mysql_query($DB, $TO);
+              - pattern: |
+                  memcpy($TO, $FROM, $SIZE);
+                  ...
+                  mysql_real_query($DB, $TO, ...);
+              - pattern: |
+                  memcpy($TO, $FROM, $SIZE);
+                  ...
+                  PQexec($DB, $TO);
+              - pattern: |
+                  memcpy($TO, $FROM, $SIZE);
+                  ...
+                  sqlite3_exec($DB, $TO, ...);
+              - pattern: |
+                  memcpy($TO, $FROM, $SIZE);
+                  ...
+                  SQLExecDirect($STMT, $TO, ...);
+              - pattern: |
+                  memcpy($TO, $FROM, $SIZE);
+                  ...
+                  SQLExecDirect($STMT, (SQLCHAR *)$TO, ...);
+          - focus-metavariable: $FROM
