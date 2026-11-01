@@ -21,6 +21,7 @@ import tokenize
 import uuid
 from collections import deque
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
@@ -821,9 +822,8 @@ def analyze_snippet(
                 "sink_line": dominance.get("sink_line"),
             },
         }
-        results: list[dict[str, Any]] = []
-        for model_id in requested:
-            row = _analyze_model(
+        def run_one(model_id: str) -> dict[str, Any]:
+            return _analyze_model(
                 model_id=model_id, client=clients.get(model_id),
                 limiter=limiter, finding=finding, stripped=stripped,
                 evidence_block=evidence_block, evidence=evidence, limits=limits,
@@ -832,7 +832,11 @@ def analyze_snippet(
                 scanner_finding=scanner_finding, deadline=deadline,
                 guard_ms=guard_ms, scan_ms=scan_ms, evidence_ms=evidence_ms,
             )
-            results.append(row)
+
+        # Compare mode calls both providers at once (the limiter is lock-protected), so the
+        # visitor waits for the slower model instead of the sum; results keep request order.
+        with ThreadPoolExecutor(max_workers=len(requested) or 1) as pool:
+            results: list[dict[str, Any]] = list(pool.map(run_one, requested))
         payload: dict[str, Any] = {
             "label": LABEL,
             "model_mode": model,
