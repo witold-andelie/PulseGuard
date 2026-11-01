@@ -1,0 +1,5 @@
+[
+  {"thresholdPercent": 0.5, "spendBasis": "CURRENT_SPEND"},
+  {"thresholdPercent": 0.9, "spendBasis": "CURRENT_SPEND"},
+  {"thresholdPercent": 1.0, "spendBasis": "CURRENT_SPEND"}
+]

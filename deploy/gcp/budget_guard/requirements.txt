@@ -1,0 +1,2 @@
+functions-framework>=3.9,<4
+google-cloud-billing>=1.17,<2

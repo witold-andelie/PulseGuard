@@ -336,6 +336,11 @@ stay in temporary directories; the recorder never substitutes fake model respons
 
 ## Scanning and deployment
 
+The optional [Cloud Run + Render deployment](docs/DEPLOYMENT.md) keeps Render available
+and prefers Google Cloud through the GitHub Pages front door:
+<https://witold-andelie.github.io/PulseGuard/> (placeholder until Pages is enabled).
+The deployment scripts are opt-in; no cloud resources are created by CI verification.
+
 The scan extra installs Semgrep **1.183.0**, its compatible FastAPI version and Bandit.
 Bandit runs as a pure-Python subprocess. Real Semgrep tests carry `@pytest.mark.semgrep`
 and skip when the CLI cannot execute. Real Trivy tests carry `@pytest.mark.trivy` and skip
