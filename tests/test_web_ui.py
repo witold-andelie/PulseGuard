@@ -114,7 +114,8 @@ def test_html_language_landmarks_skip_and_headings():
     assert 'class="skip-link"' in HTML
     tree = parse_html(HTML)
     views = [node for node in walk(tree) if node.get("attrs", {}).get("data-view")]
-    assert {node["attrs"]["data-view"] for node in views} >= {"board", "case", "process", "how"}
+    assert {node["attrs"]["data-view"] for node in views} >= {
+        "board", "case", "process", "how", "playground"}
     for view in views:
         headings = [
             child["tag"] for child in walk(view["children"])
@@ -146,6 +147,10 @@ def test_controls_have_accessible_names():
     assert "Approver name" in JS
     assert 'actor.id = "approver-name"' in JS
     assert 'for", "approver-name"' in JS or "approver-name" in JS
+    assert 'for="playground-code"' in HTML
+    assert 'for="playground-example"' in HTML
+    assert 'id="playground-analyze"' in HTML
+    assert "Analyze" in HTML
 
 
 def test_no_sprint_labels_in_web():
@@ -182,6 +187,11 @@ def test_required_behaviours_and_missing_key_wording():
     assert "prefers-reduced-motion" in CSS
     assert "Skip to main content" in HTML
     assert "Coverage is not confidence" in HTML
+    assert "/api/playground/analyze" in JS
+    assert "/api/playground/config" in JS
+    assert "heading-playground-results" in JS
+    assert "nothing is executed or stored" in HTML.lower()
+    assert "playground-compare" in CSS
     assert "modeInfo.model" in JS
     assert "Show the exact block sent to the model" in JS
     assert "JSON.stringify(patch.sandbox_report" not in JS

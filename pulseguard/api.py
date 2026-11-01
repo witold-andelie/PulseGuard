@@ -31,6 +31,8 @@ from pulseguard.contracts.validate import assert_payload
 from pulseguard.governance.approval import ApprovalError, record_decision
 from pulseguard.patching.history import FixHistoryStore
 from pulseguard.paths import default_db_path, replay_dir, web_dir
+from pulseguard.playground import PlaygroundHooks
+from pulseguard.playground import router as playground_router
 from pulseguard.replay.store import RunStore, validate_run_id
 from pulseguard.replay.verify import verify_manifest
 from pulseguard.run import (
@@ -121,6 +123,7 @@ def create_app(
     web_root: str | Path | None = None,
     live_deps: GraphDeps | None = None,
     live_runner: LiveRunner | None = None,
+    playground: PlaygroundHooks | None = None,
 ) -> FastAPI:
     mode = resolve_mode(mode)
     app = FastAPI(title="PulseGuard", version=__version__)
@@ -166,7 +169,9 @@ def create_app(
     app.state.store = store
     app.state.info = info
     app.state.live_runs = live_runs
+    app.state.playground_hooks = playground or PlaygroundHooks()
     app.include_router(eventlog_router)
+    app.include_router(playground_router)
 
     @app.get("/health")
     def health() -> JSONResponse:

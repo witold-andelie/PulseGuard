@@ -212,6 +212,54 @@ REPLAY returns 404 for run endpoints; LIVE without a configured token returns 50
 credentials return 401. Render remains **REPLAY by default**, with `PG_LIVE_TOKEN` marked
 `sync: false`; this work does not change the deployed service or record a new replay.
 
+## Playground
+
+The public web UI includes a **Playground** (`#playground`) that accepts a pasted Flask
+Python snippet and runs PulseGuard's non-executing analysis on it: Guard, Semgrep (local
+taint rule), Bandit, Hard Evidence, z3 validator proof, model adjudication, citation
+checks and the z3 veto. Two models are switchable, with a compare-both mode: **Meta Muse
+Spark** (primary) and **NVIDIA Nemotron** (control). Endpoints:
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /api/playground/config` | Enabled flag, model names, caps, limits, remaining budget |
+| `GET /api/playground/examples` | Built-in snippets (SQLi concat/f-string, parameterised, allow-list, z3 unsat, unanchored regex, CommentInject, planted AI reviewer) |
+| `POST /api/playground/analyze` | `{code, model: "muse"\|"nemotron"\|"both"}` → Guard, scanners, evidence, verdict, verification, decision |
+
+**What it never does.** It does not import, `exec`, `eval`, compile-to-run, sandbox,
+pytest, patch, remediate or store the snippet. Parse is `ast.parse` only. A temp file
+exists solely so Semgrep and Bandit can read text; the per-request directory under the
+system temp is deleted afterwards. Playground results are ephemeral: they are not written
+to `replay/` or the case store. Every response is labelled
+"Playground — static analysis + model adjudication; nothing is executed or stored".
+
+**Limits.** UTF-8 text, ≤ 6 KB, ≤ 200 lines, must parse as Python. `# @vuln` / `# @safe`
+annotations are stripped before any model sees the text. Guard runs first; a flagged
+snippet is quarantined and never reaches a model. Per client IP (first `X-Forwarded-For`
+hop from Render's proxy): 5 analyses/minute, 40/day, one concurrent analysis. Global
+daily model-call budget `PG_PLAYGROUND_DAILY_CALLS` (default 300). In-memory counters
+reset when the process restarts. HTTP 429 includes `Retry-After`. When keys are absent
+or the budget is exhausted, the Playground degrades to static analysis and says so.
+
+Model endpoints and keys come only from server environment variables, never from the
+browser. Responses and logs carry no secrets and no host paths. Provider errors return
+the exception type and status only.
+
+| Variable | Meaning |
+| --- | --- |
+| `PG_PLAYGROUND_MUSE_BASE_URL` / `_NAME` / `_API_KEY` | Meta Muse Spark OpenAI-compatible endpoint |
+| `PG_PLAYGROUND_MUSE_SESSION_HEADER` | Defaults to `x-opencode-session` (per-request id) |
+| `PG_PLAYGROUND_MUSE_STRUCTURED` / `_EXTRA_BODY` / `_TIMEOUT_S` | Optional knobs; User-Agent is PulseGuard's |
+| `PG_PLAYGROUND_NEMOTRON_BASE_URL` / `_NAME` / `_API_KEY` | NVIDIA Nemotron endpoint |
+| `PG_PLAYGROUND_NEMOTRON_STRUCTURED` | Defaults to `off` |
+| `PG_PLAYGROUND_NEMOTRON_EXTRA_BODY` / `_SESSION_HEADER` / `_TIMEOUT_S` | Optional knobs |
+| `PG_PLAYGROUND_DAILY_CALLS` | Global model-call budget per process-day (default 300) |
+| `PG_PLAYGROUND_TIMEOUT_S` | Overall analysis deadline in seconds (default 90) |
+
+Set the `PG_PLAYGROUND_MUSE_*` and `PG_PLAYGROUND_NEMOTRON_*` values in the Render
+dashboard (`sync: false` in `render.yaml`). The Playground works in both REPLAY and
+LIVE serving modes.
+
 ## How to record
 
 Use the existing Python environment with Semgrep and Bandit available. Keep the env file
