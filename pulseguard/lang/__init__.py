@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import ast
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from pulseguard.contracts.models import EvidenceItem
-from pulseguard.evidence import build_hard_evidence, code_excerpt, render_block
+from pulseguard.evidence import HEADER, build_hard_evidence, code_excerpt, render_block
 from pulseguard.paths import rules_dir
 from pulseguard.scanners.semgrep import DataflowTrace, SemgrepRunner, TraceLine
 
@@ -59,8 +60,14 @@ def _advisory(code: str, language: str, reason: str) -> StaticResult:
     limits: list[dict] = []
     _limit(limits, "language coverage", reason + "; no hard evidence; verdict is advisory only")
     excerpt = advisory_excerpt(code)
+    # An empty evidence section read as "no taint shown" led a model to score a clearly
+    # injectable COBOL program 0.0; say plainly that nothing was analysed deterministically.
+    block = _block([], limits, excerpt).replace(
+        HEADER, HEADER + "\n(none: no deterministic analysis exists for " + language
+        + ". Judge exploitability from the code itself; an empty evidence section is not "
+        "evidence of safety. cited_evidence must be [].)", 1)
     return StaticResult(language, "llm_only", False, reason, [], [], [], limits,
-                        excerpt, _block([], limits, excerpt), None, None, None)
+                        excerpt, block, None, None, None)
 
 
 def _python(code: str) -> StaticResult:
@@ -123,12 +130,25 @@ def _scan(code: str, language: str, limits: list[dict]) -> list:
         with tempfile.TemporaryDirectory(prefix="pg-lang-") as directory:
             root = Path(directory)
             (root / f"snippet.{_EXTENSIONS[language]}").write_text(code, encoding="utf-8")
-            return SemgrepRunner(rules=rules_dir() / _RULES[language], timeout=25).run(root)
+            return SemgrepRunner(rules=rules_dir() / _RULES[language],
+                                 timeout=_semgrep_timeout()).run(root)
     except (OSError, RuntimeError) as exc:
-        # Do not expose exception text (scanner diagnostics can contain host paths).
+        # Do not expose exception text (scanner diagnostics can contain host paths); a
+        # timeout is named because it explains slow hosts without revealing anything.
+        reason = "timed out" if "timed out" in str(exc) else type(exc).__name__
         _limit(limits, "SQL injection scan", f"Semgrep unavailable for {language}: "
-               f"{type(exc).__name__}; no absence or safety claim")
+               f"{reason}; no absence or safety claim")
         return []
+
+
+def _semgrep_timeout() -> float:
+    """Seconds per Semgrep call; a run makes two calls (JSON + traces). Small hosts such
+    as Render's free tier need far more than a laptop, so the default matches the
+    Python path and PG_SEMGREP_TIMEOUT_S can tune it."""
+    try:
+        return max(5.0, float(os.environ.get("PG_SEMGREP_TIMEOUT_S", "180")))
+    except ValueError:
+        return 180.0
 
 
 def analyze_static(code: str, language: str) -> StaticResult:

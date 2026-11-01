@@ -790,3 +790,13 @@ def test_real_language_backend_keeps_cobol_advisory(tmp_path):
     assert row["evidence"] == [] and row["analysis_limits"]
     assert "confirmed" not in row["decision"].lower()
     assert ADVISORY_DECISION in row["decision"].lower()
+
+
+def test_llm_only_prompt_numbers_lines_once_and_says_empty_is_not_safe(tmp_path):
+    llm = FakeLLM([verdict(0.9)])
+    client = _client(tmp_path, clients={"muse": llm})
+    assert _analyze(client, COBOL, language="cobol").status_code == 200
+    prompt = llm.calls[0]["user"]
+    assert "not evidence of safety" in prompt
+    assert not any(line.split(":", 1)[-1].lstrip().split(":", 1)[0].isdigit()
+                   for line in prompt.splitlines() if line[:1].isdigit() and ": " in line)

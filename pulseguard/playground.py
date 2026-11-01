@@ -732,8 +732,11 @@ def _finding_from_lang(
         evidence_raw = []
         if not limits:
             limits = [_llm_only_limit(language)]
-        evidence_block = render_block(
-            [], excerpt, sink_line=int(sink_line or 1), analysis_limits=limits)
+        # Prefer the backend's block: it numbers lines once and tells the model that an
+        # empty evidence section is not evidence of safety. Rebuilding it from the already
+        # numbered excerpt doubled every line number ("1: 1:") and dropped that note.
+        evidence_block = str(_static_get(result, "evidence_block") or "") or render_block(
+            [], stripped, sink_line=int(sink_line or 1), analysis_limits=limits)
         evidence = []
     else:
         evidence = _evidence_dicts(evidence_raw, snippet_name)
