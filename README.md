@@ -42,6 +42,34 @@ risk, tiered approval and rollback endpoint in a separate workstream. Until merg
 LIVE CLI still follows its S1 Semgrep-only path and manual approval; the new scanner
 adapters can be exercised independently. No S3 or stretch features are added here.
 
+## Language tiers
+
+`pulseguard.lang.analyze_static(code, language)` never executes submitted code.
+Install `.[languages]` for the optional Tree-sitter grammar wheels.
+
+| Tier | Coverage and limits |
+| --- | --- |
+| `full` | Python uses the existing evidence pipeline, including sanitizer facts, z3 and validator dominance. Each check retains its existing coverage limits; a finding is not proof of exploitability. |
+| `grammar` | Java, JavaScript, TypeScript, Go, C#, C, C++ and SQL get Tree-sitter parsing and an enclosing-function excerpt with capped, one-hop same-file definitions. E1/E2 require exact-line AST confirmation of sources and trace variables. Local SQL injection taint rules cover Java, JS/TS, Go, C# and C/C++ API shapes; SQL has no rule. Sanitizer recognition and constraint solving are unavailable and appear as analysis limits. |
+| `llm_only` | COBOL, SAS, PL/SQL, unknown languages, missing grammars and parse errors produce no hard evidence. Any model verdict is advisory only. |
+
+Language tiers do not authorize remediation. Grammar coverage is partial; missing findings
+and analysis limits do not establish safety. Referenced definitions are capped at 60 lines /
+4 KB and remain untrusted source context, not additional evidence.
+
+C/C++ SQL rules cover external input from `argv`, environment variables, socket/file input
+buffers and standard input, through string construction to MySQL, libpq, SQLite, OCI and
+ODBC direct SQL text. Prepared statements with separately bound values are safe forms for
+these rules; their presence does not sanitize other interpolated queries. C/C++ context
+includes referenced `#define` constants, static const arrays and called static functions.
+Supported language hints win; `.c`/`.h` filename hints default to C, while C++ syntax markers
+such as `std::`, classes, templates, namespaces and `#include <string>` select C++.
+
+C/C++ memory-safety classes **CWE-120** (buffer overflow), **CWE-134** (format string) and
+**CWE-190** (integer overflow) are **not covered yet**. They remain on the roadmap, with
+revio's cppcheck runner and SymbAI-Taint's C binary analysis as reference work; neither is
+integrated into these language tiers.
+
 ## Sprint 2 demo scenarios
 
 | Scenario | Scanner / expected S2 behavior |

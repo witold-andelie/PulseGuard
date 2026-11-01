@@ -1,0 +1,25 @@
+# PulseGuard original database/sql taint rule; no registry rule content reused.
+# fmt.Sprintf/concatenation propagates taint. Bound placeholder values are not SQL text.
+rules:
+  - id: go-sqli-taint
+    languages: [go]
+    mode: taint
+    severity: ERROR
+    message: Request input reaches database/sql SQL text; use placeholders and bound arguments.
+    metadata:
+      cwe: CWE-89
+      category: security
+    pattern-sources:
+      - pattern: $R.URL.Query().Get(...)
+      - pattern: $R.FormValue(...)
+      - pattern: mux.Vars($R)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.Query($Q, ...)
+              - pattern: $DB.QueryRow($Q, ...)
+              - pattern: $DB.Exec($Q, ...)
+              - pattern: $DB.QueryContext($CTX, $Q, ...)
+              - pattern: $DB.QueryRowContext($CTX, $Q, ...)
+              - pattern: $DB.ExecContext($CTX, $Q, ...)
+          - focus-metavariable: $Q

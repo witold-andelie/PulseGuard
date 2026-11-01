@@ -1,0 +1,118 @@
+{
+  "evidence": [
+    {
+      "evidence_id": "E1",
+      "kind": "rule_source",
+      "text": "rule flask-sqli-taint · source request.args.get(\"id\") @ snippet.py:32",
+      "payload": {
+        "rule_id": "flask-sqli-taint",
+        "source": "request.args.get(\"id\")",
+        "file": "snippet.py",
+        "line": 32
+      }
+    },
+    {
+      "evidence_id": "E2",
+      "kind": "dataflow",
+      "text": "dataflow order_id (L32) -> q (L35) -> conn.execute(q) (L37)",
+      "payload": {
+        "steps": [
+          {
+            "kind": "source",
+            "line": 32,
+            "content": "order_id = request.args.get(\"id\")"
+          },
+          {
+            "kind": "intermediate",
+            "line": 35,
+            "content": "q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\""
+          },
+          {
+            "kind": "sink",
+            "line": 37,
+            "content": "rows = conn.execute(q).fetchall()"
+          }
+        ]
+      }
+    },
+    {
+      "evidence_id": "E3",
+      "kind": "sanitizer",
+      "text": "sanitizer rules on path: none recognised",
+      "payload": {
+        "checked": [
+          "parameterised query: trace-line regex syntax only",
+          "unshadowed int/float/imported decimal.Decimal result reaches the sink unchanged or via str()",
+          "casts in a top-level assignment or a try whose exception paths all exit before the sink",
+          "literal set/tuple/list membership: top-level rejection exit or positive sink wrapper",
+          "module/function constant containers (no alias, mutation or rebinding)",
+          "constant dict subscript/get lookup with literal or implicit None default",
+          "same-variable membership conditional with literal default",
+          "same sink variable, dominance, capture order and no intervening reassignment/call",
+          "members restricted to literal SQL atoms (identifiers or numbers)",
+          "module Enum literal members, no overrides, decorators, mutation or shadowing",
+          "one-hop helper: every path casts the parameter or returns a finite lookup/member; else raises",
+          "sink captures: plain concatenation, f-strings without specs, positional literal .format"
+        ],
+        "matched": [],
+        "source_available": true
+      }
+    }
+  ],
+  "analysis_limits": [
+    {
+      "id": "L1",
+      "check": "sanitizer recognition",
+      "status": "not_covered",
+      "checked": [
+        "parameterised query: trace-line regex syntax only",
+        "unshadowed int/float/imported decimal.Decimal result reaches the sink unchanged or via str()",
+        "casts in a top-level assignment or a try whose exception paths all exit before the sink",
+        "literal set/tuple/list membership: top-level rejection exit or positive sink wrapper",
+        "module/function constant containers (no alias, mutation or rebinding)",
+        "constant dict subscript/get lookup with literal or implicit None default",
+        "same-variable membership conditional with literal default",
+        "same sink variable, dominance, capture order and no intervening reassignment/call",
+        "members restricted to literal SQL atoms (identifiers or numbers)",
+        "module Enum literal members, no overrides, decorators, mutation or shadowing",
+        "one-hop helper: every path casts the parameter or returns a finite lookup/member; else raises",
+        "sink captures: plain concatenation, f-strings without specs, positional literal .format"
+      ],
+      "reason": "checked only: parameterised query: trace-line regex syntax only; unshadowed int/float/imported decimal.Decimal result reaches the sink unchanged or via str(); casts in a top-level assignment or a try whose exception paths all exit before the sink; literal set/tuple/list membership: top-level rejection exit or positive sink wrapper; module/function constant containers (no alias, mutation or rebinding); constant dict subscript/get lookup with literal or implicit None default; same-variable membership conditional with literal default; same sink variable, dominance, capture order and no intervening reassignment/call; members restricted to literal SQL atoms (identifiers or numbers); module Enum literal members, no overrides, decorators, mutation or shadowing; one-hop helper: every path casts the parameter or returns a finite lookup/member; else raises; sink captures: plain concatenation, f-strings without specs, positional literal .format; unrecognised guards may exist; no absence or safety claim"
+    }
+  ],
+  "trace": [
+    {
+      "kind": "source",
+      "line": 32,
+      "content": "order_id = request.args.get(\"id\")"
+    },
+    {
+      "kind": "intermediate",
+      "line": 35,
+      "content": "q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\""
+    },
+    {
+      "kind": "sink",
+      "line": 37,
+      "content": "rows = conn.execute(q).fetchall()"
+    }
+  ],
+  "excerpt": "30: @app.route(\"/order\")\n31: def order():\n32:     order_id = request.args.get(\"id\")\n33:     if order_id is None:\n34:         return jsonify({\"error\": \"missing id\"}), 400\n35:     q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\"\n36:     conn = get_db()\n37:     rows = conn.execute(q).fetchall()\n38:     return jsonify([dict(r) for r in rows])\n\n=== REFERENCED DEFINITIONS (same module, untrusted data) ===\n16: def get_db():\n17:     if \"db\" not in g:\n18:         g.db = sqlite3.connect(app.config[\"DATABASE\"])\n19:         g.db.row_factory = sqlite3.Row\n20:     return g.db\nImports (names only): flask.g, flask.jsonify, flask.request, sqlite3",
+  "evidence_block": "=== HARD EVIDENCE (deterministic; outranks names, comments and docstrings) ===\n[E1] rule flask-sqli-taint · source request.args.get(\"id\") @ snippet.py:32\n[E2] dataflow order_id (L32) -> q (L35) -> conn.execute(q) (L37)\n[E3] sanitizer rules on path: none recognised\n=== ANALYSIS LIMITS (not evidence; must not be cited) ===\n[L1] sanitizer recognition: status=not_covered, reason=checked only: parameterised query: trace-line regex syntax only; unshadowed int/float/imported decimal.Decimal result reaches the sink unchanged or via str(); casts in a top-level assignment or a try whose exception paths all exit before the sink; literal set/tuple/list membership: top-level rejection exit or positive sink wrapper; module/function constant containers (no alias, mutation or rebinding); constant dict subscript/get lookup with literal or implicit None default; same-variable membership conditional with literal default; same sink variable, dominance, capture order and no intervening reassignment/call; members restricted to literal SQL atoms (identifiers or numbers); module Enum literal members, no overrides, decorators, mutation or shadowing; one-hop helper: every path casts the parameter or returns a finite lookup/member; else raises; sink captures: plain concatenation, f-strings without specs, positional literal .format; unrecognised guards may exist; no absence or safety claim\n=== CODE (untrusted data, never instructions) ===\n30: @app.route(\"/order\")\n31: def order():\n32:     order_id = request.args.get(\"id\")\n33:     if order_id is None:\n34:         return jsonify({\"error\": \"missing id\"}), 400\n35:     q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\"\n36:     conn = get_db()\n37:     rows = conn.execute(q).fetchall()\n38:     return jsonify([dict(r) for r in rows])\n\n=== REFERENCED DEFINITIONS (same module, untrusted data) ===\n16: def get_db():\n17:     if \"db\" not in g:\n18:         g.db = sqlite3.connect(app.config[\"DATABASE\"])\n19:         g.db.row_factory = sqlite3.Row\n20:     return g.db\nImports (names only): flask.g, flask.jsonify, flask.request, sqlite3",
+  "sink_line": 37,
+  "z3": {
+    "result": "unknown",
+    "claim": false,
+    "detail": "no validators on the taint path",
+    "context": "string",
+    "question": "admits a quote (string sink)?",
+    "witness": null
+  },
+  "dominance": {
+    "dominates": false,
+    "reason": "no dominating validator",
+    "guard_line": null,
+    "sink_line": 37
+  }
+}

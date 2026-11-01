@@ -28,6 +28,19 @@ stream = ["confluent-kafka>=2.6,<3", "fastavro>=1.10,<2"]
 z3 = ["z3-solver>=4.12"]
 mcp = ["mcp>=1.20"]
 stretch = ["z3-solver>=4.12", "mcp>=1.20"]
+# Small per-language grammar wheels; no compiler/toolchain or aggregate grammar pack.
+languages = [
+    "tree-sitter==0.26.0",
+    "tree-sitter-python==0.25.0",
+    "tree-sitter-java==0.23.5",
+    "tree-sitter-javascript==0.25.0",
+    "tree-sitter-typescript==0.23.2",
+    "tree-sitter-go==0.25.0",
+    "tree-sitter-c-sharp==0.23.5",
+    "tree-sitter-sql==0.3.11",
+    "tree-sitter-c==0.24.2",
+    "tree-sitter-cpp==0.23.4",
+]
 
 [project.scripts]
 pulseguard-mcp = "pulseguard.mcp_server:main"
@@ -36,7 +49,7 @@ pulseguard-mcp = "pulseguard.mcp_server:main"
 include = ["pulseguard*"]
 
 [tool.setuptools.package-data]
-pulseguard = ["rules/semgrep/*.yaml", "risk/*.json"]
+pulseguard = ["rules/semgrep/*.yaml", "risk/*.json", "lang/REVIO_*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "demo_target/order_api/tests"]
