@@ -1,0 +1,1073 @@
+{
+  "summary": {
+    "sites": 40,
+    "vulnerable": 19,
+    "safe": 21,
+    "by_class": {
+      "sqli": {
+        "sites": 40,
+        "vulnerable": 19,
+        "safe": 21
+      }
+    }
+  },
+  "corpora": {
+    "hard": {
+      "sites": 40,
+      "vulnerable": 19,
+      "safe": 21
+    }
+  },
+  "modes": {
+    "semgrep": {
+      "status": "completed",
+      "reason": null,
+      "metrics": {
+        "tp": 12,
+        "fp": 11,
+        "fn": 7,
+        "tn": 10,
+        "precision": 0.5217391304347826,
+        "recall": 0.631578947368421,
+        "f1": 0.5714285714285714,
+        "fp_rate": 0.5238095238095238,
+        "fn_rate": 0.3684210526315789
+      },
+      "by_class": {
+        "sqli": {
+          "tp": 12,
+          "fp": 11,
+          "fn": 7,
+          "tn": 10,
+          "precision": 0.5217391304347826,
+          "recall": 0.631578947368421,
+          "f1": 0.5714285714285714,
+          "fp_rate": 0.5238095238095238,
+          "fn_rate": 0.3684210526315789
+        }
+      },
+      "by_corpus": {
+        "hard": {
+          "tp": 12,
+          "fp": 11,
+          "fn": 7,
+          "tn": 10,
+          "precision": 0.5217391304347826,
+          "recall": 0.631578947368421,
+          "f1": 0.5714285714285714,
+          "fp_rate": 0.5238095238095238,
+          "fn_rate": 0.3684210526315789
+        }
+      },
+      "flagged_sites": [
+        "eval_cases/hard/bypasses.py:118:sqli",
+        "eval_cases/hard/bypasses.py:130:sqli",
+        "eval_cases/hard/bypasses.py:138:sqli",
+        "eval_cases/hard/bypasses.py:146:sqli",
+        "eval_cases/hard/bypasses.py:22:sqli",
+        "eval_cases/hard/bypasses.py:32:sqli",
+        "eval_cases/hard/bypasses.py:42:sqli",
+        "eval_cases/hard/bypasses.py:52:sqli",
+        "eval_cases/hard/bypasses.py:62:sqli",
+        "eval_cases/hard/bypasses.py:73:sqli",
+        "eval_cases/hard/bypasses.py:84:sqli",
+        "eval_cases/hard/bypasses.py:96:sqli",
+        "eval_cases/hard/safes.py:146:sqli",
+        "eval_cases/hard/safes.py:164:sqli",
+        "eval_cases/hard/safes.py:186:sqli",
+        "eval_cases/hard/safes.py:196:sqli",
+        "eval_cases/hard/safes.py:26:sqli",
+        "eval_cases/hard/safes.py:35:sqli",
+        "eval_cases/hard/safes.py:45:sqli",
+        "eval_cases/hard/safes.py:54:sqli",
+        "eval_cases/hard/safes.py:63:sqli",
+        "eval_cases/hard/safes.py:72:sqli",
+        "eval_cases/hard/safes.py:88:sqli"
+      ],
+      "candidates": 23,
+      "model_calls": 0,
+      "model_failures": 0,
+      "decisions": []
+    },
+    "bandit": {
+      "status": "completed",
+      "reason": null,
+      "metrics": {
+        "tp": 18,
+        "fp": 16,
+        "fn": 1,
+        "tn": 5,
+        "precision": 0.5294117647058824,
+        "recall": 0.9473684210526315,
+        "f1": 0.6792452830188679,
+        "fp_rate": 0.7619047619047619,
+        "fn_rate": 0.05263157894736842
+      },
+      "by_class": {
+        "sqli": {
+          "tp": 18,
+          "fp": 16,
+          "fn": 1,
+          "tn": 5,
+          "precision": 0.5294117647058824,
+          "recall": 0.9473684210526315,
+          "f1": 0.6792452830188679,
+          "fp_rate": 0.7619047619047619,
+          "fn_rate": 0.05263157894736842
+        }
+      },
+      "by_corpus": {
+        "hard": {
+          "tp": 18,
+          "fp": 16,
+          "fn": 1,
+          "tn": 5,
+          "precision": 0.5294117647058824,
+          "recall": 0.9473684210526315,
+          "f1": 0.6792452830188679,
+          "fp_rate": 0.7619047619047619,
+          "fn_rate": 0.05263157894736842
+        }
+      },
+      "flagged_sites": [
+        "eval_cases/hard/bypasses.py:107:sqli",
+        "eval_cases/hard/bypasses.py:118:sqli",
+        "eval_cases/hard/bypasses.py:130:sqli",
+        "eval_cases/hard/bypasses.py:138:sqli",
+        "eval_cases/hard/bypasses.py:146:sqli",
+        "eval_cases/hard/bypasses.py:22:sqli",
+        "eval_cases/hard/bypasses.py:32:sqli",
+        "eval_cases/hard/bypasses.py:42:sqli",
+        "eval_cases/hard/bypasses.py:52:sqli",
+        "eval_cases/hard/bypasses.py:62:sqli",
+        "eval_cases/hard/bypasses.py:73:sqli",
+        "eval_cases/hard/bypasses.py:84:sqli",
+        "eval_cases/hard/bypasses.py:96:sqli",
+        "eval_cases/hard/comment_reviewer.py:14:sqli",
+        "eval_cases/hard/comment_upstream.py:14:sqli",
+        "eval_cases/hard/flows.py:38:sqli",
+        "eval_cases/hard/flows.py:50:sqli",
+        "eval_cases/hard/flows.py:60:sqli",
+        "eval_cases/hard/flows.py:77:sqli",
+        "eval_cases/hard/safes.py:146:sqli",
+        "eval_cases/hard/safes.py:154:sqli",
+        "eval_cases/hard/safes.py:164:sqli",
+        "eval_cases/hard/safes.py:176:sqli",
+        "eval_cases/hard/safes.py:186:sqli",
+        "eval_cases/hard/safes.py:196:sqli",
+        "eval_cases/hard/safes.py:26:sqli",
+        "eval_cases/hard/safes.py:35:sqli",
+        "eval_cases/hard/safes.py:45:sqli",
+        "eval_cases/hard/safes.py:54:sqli",
+        "eval_cases/hard/safes.py:63:sqli",
+        "eval_cases/hard/safes.py:72:sqli",
+        "eval_cases/hard/safes.py:80:sqli",
+        "eval_cases/hard/safes.py:88:sqli",
+        "eval_cases/hard/safes.py:96:sqli"
+      ],
+      "candidates": 35,
+      "model_calls": 0,
+      "model_failures": 0,
+      "decisions": []
+    }
+  },
+  "schema_version": 1,
+  "generated_at": "2026-11-01T07:30:13.839359+00:00",
+  "target": "demo_target",
+  "configuration": {
+    "python": "3.12.13",
+    "corpus": "hard",
+    "line_window": 12,
+    "llm_threshold": 0.7,
+    "bands": {
+      "confirmed_at": 0.7,
+      "uncertain_at": 0.3
+    },
+    "model": null,
+    "scanner_union": [
+      "semgrep",
+      "bandit"
+    ],
+    "trivy": "not included in these four modes"
+  },
+  "scanners": {
+    "semgrep": {
+      "status": "completed",
+      "version": "1.183.0",
+      "runner": "SemgrepRunner",
+      "hits": 23,
+      "matched_hits": 23,
+      "excluded_corpus_hits": 15,
+      "unmatched_hits": 0,
+      "findings": [
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 22,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:22:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 32,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:32:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 42,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:42:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 52,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:52:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 62,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:62:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 73,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:73:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 84,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:84:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 96,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:96:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 118,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:118:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 130,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:130:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 138,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:138:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 146,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/bypasses.py:146:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 26,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:26:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 35,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:35:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 45,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:45:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 54,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:54:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 63,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:63:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 72,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:72:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 88,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:88:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 146,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:146:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 164,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:164:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 186,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:186:sqli",
+          "trace_available": false
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 196,
+          "rule": "flask-sqli-taint",
+          "site": "eval_cases/hard/safes.py:196:sqli",
+          "trace_available": false
+        }
+      ]
+    },
+    "bandit": {
+      "status": "completed",
+      "version": "1.9.4",
+      "runner": "BanditRunner",
+      "hits": 35,
+      "matched_hits": 34,
+      "excluded_corpus_hits": 30,
+      "unmatched_hits": 1,
+      "findings": [
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 21,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:22:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 31,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:32:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 41,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:42:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 51,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:52:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 61,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:62:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 72,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:73:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 83,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:84:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 95,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:96:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 106,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:107:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 117,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:118:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 129,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:130:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 137,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:138:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/bypasses.py",
+          "line": 145,
+          "rule": "B608",
+          "site": "eval_cases/hard/bypasses.py:146:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/comment_reviewer.py",
+          "line": 13,
+          "rule": "B608",
+          "site": "eval_cases/hard/comment_reviewer.py:14:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/comment_upstream.py",
+          "line": 13,
+          "rule": "B608",
+          "site": "eval_cases/hard/comment_upstream.py:14:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/flows.py",
+          "line": 13,
+          "rule": "B608",
+          "site": null,
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/flows.py",
+          "line": 37,
+          "rule": "B608",
+          "site": "eval_cases/hard/flows.py:38:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/flows.py",
+          "line": 49,
+          "rule": "B608",
+          "site": "eval_cases/hard/flows.py:50:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/flows.py",
+          "line": 59,
+          "rule": "B608",
+          "site": "eval_cases/hard/flows.py:60:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/flows.py",
+          "line": 76,
+          "rule": "B608",
+          "site": "eval_cases/hard/flows.py:77:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 25,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:26:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 34,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:35:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 44,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:45:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 53,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:54:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 62,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:63:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 71,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:72:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 79,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:80:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 87,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:88:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 95,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:96:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 145,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:146:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 153,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:154:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 163,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:164:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 175,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:176:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 185,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:186:sqli",
+          "trace_available": true
+        },
+        {
+          "file": "eval_cases/hard/safes.py",
+          "line": 195,
+          "rule": "B608",
+          "site": "eval_cases/hard/safes.py:196:sqli",
+          "trace_available": true
+        }
+      ]
+    }
+  },
+  "sites": [
+    {
+      "id": "eval_cases/hard/bypasses.py:22:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 22,
+      "function": "regex_search",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: unanchored search",
+      "start_line": 15,
+      "end_line": 22
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:32:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 32,
+      "function": "regex_dollar_multiline",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: newline then OR bypasses $",
+      "start_line": 25,
+      "end_line": 32
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:42:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 42,
+      "function": "regex_match_prefix",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: prefix match permits suffix",
+      "start_line": 35,
+      "end_line": 42
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:52:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 52,
+      "function": "length_only",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: 1 OR 1=1 fits",
+      "start_line": 45,
+      "end_line": 52
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:62:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 62,
+      "function": "case_allowlist_fallthrough",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: nonmembers fall through",
+      "start_line": 55,
+      "end_line": 62
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:73:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 73,
+      "function": "different_variable",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: guard protects checked only",
+      "start_line": 65,
+      "end_line": 73
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:84:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 84,
+      "function": "one_branch",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: optional validation",
+      "start_line": 76,
+      "end_line": 84
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:96:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 96,
+      "function": "try_fallback",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: failed cast restores raw",
+      "start_line": 87,
+      "end_line": 96
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:107:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 107,
+      "function": "validated_reassigned",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: reassigned after guard",
+      "start_line": 99,
+      "end_line": 107
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:118:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 118,
+      "function": "validated_concatenated",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: unvalidated suffix",
+      "start_line": 110,
+      "end_line": 118
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:130:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 130,
+      "function": "discarded_int",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: cast discarded and error ignored",
+      "start_line": 121,
+      "end_line": 130
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:138:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 138,
+      "function": "quote_escape_numeric",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: numeric OR needs no quote",
+      "start_line": 133,
+      "end_line": 138
+    },
+    {
+      "id": "eval_cases/hard/bypasses.py:146:sqli",
+      "file": "eval_cases/hard/bypasses.py",
+      "line": 146,
+      "function": "escape_format_numeric",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: format width is not validation",
+      "start_line": 141,
+      "end_line": 146
+    },
+    {
+      "id": "eval_cases/hard/comment_reviewer.py:14:sqli",
+      "file": "eval_cases/hard/comment_reviewer.py",
+      "line": 14,
+      "function": "comment_reviewer",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: reviewer text is untrusted",
+      "start_line": 8,
+      "end_line": 14
+    },
+    {
+      "id": "eval_cases/hard/comment_upstream.py:14:sqli",
+      "file": "eval_cases/hard/comment_upstream.py",
+      "line": 14,
+      "function": "comment_upstream",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: comment supplies no validation",
+      "start_line": 8,
+      "end_line": 14
+    },
+    {
+      "id": "eval_cases/hard/flows.py:25:sqli",
+      "file": "eval_cases/hard/flows.py",
+      "line": 25,
+      "function": "two_hop",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: two helper hops; interprocedural",
+      "start_line": 21,
+      "end_line": 25
+    },
+    {
+      "id": "eval_cases/hard/flows.py:38:sqli",
+      "file": "eval_cases/hard/flows.py",
+      "line": 38,
+      "function": "helper_cast",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: cast in helper; interprocedural",
+      "start_line": 32,
+      "end_line": 38
+    },
+    {
+      "id": "eval_cases/hard/flows.py:50:sqli",
+      "file": "eval_cases/hard/flows.py",
+      "line": 50,
+      "function": "misleading_helper",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: identity helper; interprocedural",
+      "start_line": 45,
+      "end_line": 50
+    },
+    {
+      "id": "eval_cases/hard/flows.py:60:sqli",
+      "file": "eval_cases/hard/flows.py",
+      "line": 60,
+      "function": "second_order",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: stored then raw SQL; second-order",
+      "start_line": 53,
+      "end_line": 60
+    },
+    {
+      "id": "eval_cases/hard/flows.py:70:sqli",
+      "file": "eval_cases/hard/flows.py",
+      "line": 70,
+      "function": "second_order_patch",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: re-read value bound",
+      "start_line": 63,
+      "end_line": 70
+    },
+    {
+      "id": "eval_cases/hard/flows.py:77:sqli",
+      "file": "eval_cases/hard/flows.py",
+      "line": 77,
+      "function": "path_value",
+      "label": "vuln",
+      "class": "sqli",
+      "reason": "sqli: Flask path parameter source",
+      "start_line": 73,
+      "end_line": 77
+    },
+    {
+      "id": "eval_cases/hard/flows.py:84:sqli",
+      "file": "eval_cases/hard/flows.py",
+      "line": 84,
+      "function": "path_value_patch",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: patched path_value",
+      "start_line": 80,
+      "end_line": 84
+    },
+    {
+      "id": "eval_cases/hard/safes.py:26:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 26,
+      "function": "set_guard",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: constant set rejection guard",
+      "start_line": 19,
+      "end_line": 26
+    },
+    {
+      "id": "eval_cases/hard/safes.py:35:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 35,
+      "function": "tuple_positive",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: sink inside positive guard",
+      "start_line": 29,
+      "end_line": 36
+    },
+    {
+      "id": "eval_cases/hard/safes.py:45:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 45,
+      "function": "dict_subscript",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: unknown keys raise before sink",
+      "start_line": 39,
+      "end_line": 45
+    },
+    {
+      "id": "eval_cases/hard/safes.py:54:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 54,
+      "function": "dict_get",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: mapping values and default fixed",
+      "start_line": 48,
+      "end_line": 54
+    },
+    {
+      "id": "eval_cases/hard/safes.py:63:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 63,
+      "function": "enum_column",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: Enum rejects nonmember values",
+      "start_line": 57,
+      "end_line": 63
+    },
+    {
+      "id": "eval_cases/hard/safes.py:72:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 72,
+      "function": "conditional_column",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: finite conditional result",
+      "start_line": 66,
+      "end_line": 72
+    },
+    {
+      "id": "eval_cases/hard/safes.py:80:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 80,
+      "function": "integer_used",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: integer result reaches sink",
+      "start_line": 75,
+      "end_line": 80
+    },
+    {
+      "id": "eval_cases/hard/safes.py:88:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 88,
+      "function": "float_used",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: float cannot contain SQL tokens",
+      "start_line": 83,
+      "end_line": 88
+    },
+    {
+      "id": "eval_cases/hard/safes.py:96:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 96,
+      "function": "positional_binding",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: positional bind",
+      "start_line": 91,
+      "end_line": 96
+    },
+    {
+      "id": "eval_cases/hard/safes.py:104:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 104,
+      "function": "named_binding",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: named bind",
+      "start_line": 99,
+      "end_line": 104
+    },
+    {
+      "id": "eval_cases/hard/safes.py:112:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 112,
+      "function": "batch_binding",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: every row bound",
+      "start_line": 107,
+      "end_line": 113
+    },
+    {
+      "id": "eval_cases/hard/safes.py:136:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 136,
+      "function": "bound_builder",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: bound builder; interprocedural",
+      "start_line": 132,
+      "end_line": 137
+    },
+    {
+      "id": "eval_cases/hard/safes.py:146:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 146,
+      "function": "quoted_mapping",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: quoted identifiers from fixed map",
+      "start_line": 140,
+      "end_line": 146
+    },
+    {
+      "id": "eval_cases/hard/safes.py:154:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 154,
+      "function": "constant_sql",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: only SQL literals concatenated",
+      "start_line": 149,
+      "end_line": 154
+    },
+    {
+      "id": "eval_cases/hard/safes.py:164:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 164,
+      "function": "regex_fullmatch_patch",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: patched regex_match_prefix",
+      "start_line": 157,
+      "end_line": 164
+    },
+    {
+      "id": "eval_cases/hard/safes.py:176:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 176,
+      "function": "try_failclosed_patch",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: patched try_fallback exits",
+      "start_line": 167,
+      "end_line": 176
+    },
+    {
+      "id": "eval_cases/hard/safes.py:186:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 186,
+      "function": "normalised_allowlist",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: same normalised value checked",
+      "start_line": 179,
+      "end_line": 186
+    },
+    {
+      "id": "eval_cases/hard/safes.py:196:sqli",
+      "file": "eval_cases/hard/safes.py",
+      "line": 196,
+      "function": "dollar_final_newline",
+      "label": "safe",
+      "class": "sqli",
+      "reason": "sqli: final newline is SQL whitespace",
+      "start_line": 189,
+      "end_line": 196
+    }
+  ],
+  "corpus_sha256": {
+    "eval_cases/hard/bypasses.py": "e68c343e693204f15a4fd91e1bfa76635a0fc264f7e848aec5215c9d8ebf9b3f",
+    "eval_cases/hard/comment_reviewer.py": "b3699f4cae09945c8ce3e33023b759ada14fbb83c9a8ce293b1cef507c6f7bbc",
+    "eval_cases/hard/comment_upstream.py": "13e184466f1bff2117222d7fd3e621eafa87bf8bd8cba0ec00786c16f1eff9d8",
+    "eval_cases/hard/flows.py": "d14cc486146bbb036d52464129c1e6e759c2f745176317904e1690cfc96e2235",
+    "eval_cases/hard/safes.py": "235a564a1b141ad3b14867ad40d2c71018070e3eaecf03b990c99761b6888cdb"
+  },
+  "limitations": "Small, author-written set; these counts describe only this corpus. Do not generalise to production code or other vulnerability classes. Unlabelled scanner hits are audited separately, not counted as false positives."
+}

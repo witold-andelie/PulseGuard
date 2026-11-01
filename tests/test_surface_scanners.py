@@ -50,6 +50,7 @@ def test_bandit_normalization_preserves_cast_context_and_exact_extra():
     assert evidence[2].payload["matched"] == [{
         "rule": "int-cast", "line": next(step.line for step in finding.trace
                                        if "int(raw_number)" in step.content),
+        "scope": "trace-line syntax only",
     }]
     llm = FakeLLM([verdict(0.1)])
     answer = adjudicate(finding, render_block(evidence), llm=llm)

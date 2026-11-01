@@ -22,7 +22,8 @@ Rules:
 4. cited_evidence contains ids only, e.g. "E1", never brackets or explanatory text.
    Cite only evidence ids that appear in the block. Do not invent line numbers.
 5. ANALYSIS LIMITS [L1], [L2], ... describe checks that made no claim. L-ids are limits,
-   never evidence: never cite them or interpret unknown as safety or risk evidence.
+   never evidence: never cite them or interpret unknown/not_covered as safety or risk evidence.
+   E3 'none recognised' describes limited pattern coverage, not absence of sanitisation.
 6. When present, use E6 in step2_constraint. An unsat model can veto confirmation but cannot
    decide false_positive or lower a score on its own; assess the dataflow and guard scope.
 Reason in four steps, one short sentence each:

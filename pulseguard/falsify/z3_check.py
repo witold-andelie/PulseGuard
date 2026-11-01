@@ -211,6 +211,73 @@ def sink_context(code: str, source_line: int, sink_line: int) -> dict[str, Any]:
             "reason": "plain SQL interpolation"}
 
 
+def _guard_exits(tree: ast.AST, fn: ast.AST, body: list[ast.stmt]) -> bool:
+    """Recognise an unconditional exit, including an imported, unshadowed Flask abort."""
+    if len(body) != 1:
+        return False
+    statement = body[0]
+    if isinstance(statement, (ast.Return, ast.Raise)):
+        return True
+    if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+        return False
+    call = ast.unparse(statement.value.func)
+    known_abort = (call == "abort" and any(
+        isinstance(node, ast.ImportFrom) and node.module == "flask"
+        and any(alias.name == "abort" and alias.asname in (None, "abort")
+                for alias in node.names) for node in [*tree.body, *fn.body]
+    )) or (call == "flask.abort" and any(
+        isinstance(node, ast.Import) and any(
+            alias.name == "flask" and alias.asname in (None, "flask") for alias in node.names
+        ) for node in [*tree.body, *fn.body]
+    ))
+    root_name = call.split(".")[0]
+    rebound = any(
+        (isinstance(node, ast.Name) and node.id == root_name
+         and isinstance(node.ctx, (ast.Store, ast.Del)))
+        or (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node.name == root_name)
+        or (isinstance(node, ast.arg) and node.arg == root_name)
+        for node in ast.walk(tree)
+    )
+    return known_abort and not rebound
+
+
+def _value_unchanged(
+    fn: ast.AST, name: str, after: int, sink_line: int,
+    *, permitted_calls: set[ast.Call] | None = None, after_node: ast.AST | None = None,
+) -> bool:
+    """Shared conservative dominance condition for regex and finite-value evidence."""
+    for node in ast.walk(fn):
+        if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
+            return False
+    for node in _local_nodes(fn):
+        line = getattr(node, "lineno", 0)
+        boundary = ((after, after_node.end_col_offset or 0) if after_node is not None
+                    else (after, float("inf")))
+        if (line, getattr(node, "col_offset", 0)) <= boundary or line > sink_line:
+            continue
+        if isinstance(node, ast.Name) and node.id == name and isinstance(
+            node.ctx, (ast.Store, ast.Del)
+        ):
+            return False
+        if isinstance(node, (ast.Subscript, ast.Attribute)) and isinstance(
+            node.ctx, (ast.Store, ast.Del)
+        ) and _uses_names(node.value, {name}):
+            return False
+        if isinstance(node, ast.Call) and _uses_names(node, {name}):
+            is_sink = any(
+                isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute)
+                and child.func.attr == "execute" and _uses_names(child, {name})
+                and child.lineno <= sink_line <= (child.end_lineno or child.lineno)
+                for child in ast.walk(node)
+            )
+            if (not is_sink and node not in (permitted_calls or set())
+                    and _match_call(node) is None
+                    and _ctype_call(node, {name}) is None and _len_arg(node) != name):
+                return False
+    return True
+
+
 def check_validator_dominance(
     code: str, *, source_line: int, sink_line: int,
     validators: list[Validator] | None = None,
@@ -236,37 +303,6 @@ def check_validator_dominance(
     if not validators:
         return result
 
-    def exits(body: list[ast.stmt]) -> bool:
-        # No branches/try blocks whose failure exit might be swallowed.
-        if len(body) != 1:
-            return False
-        statement = body[0]
-        if isinstance(statement, (ast.Return, ast.Raise)):
-            return True
-        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
-            return False
-        call = ast.unparse(statement.value.func)
-        imports = [*tree.body, *fn.body]
-        known_abort = (call == "abort" and any(
-            isinstance(node, ast.ImportFrom) and node.module == "flask"
-            and any(alias.name == "abort" and alias.asname in (None, "abort")
-                    for alias in node.names) for node in imports
-        )) or (call == "flask.abort" and any(
-            isinstance(node, ast.Import) and any(
-                alias.name == "flask" and alias.asname in (None, "flask") for alias in node.names
-            ) for node in imports
-        ))
-        root_name = call.split(".")[0]
-        rebound = any(
-            (isinstance(node, ast.Name) and node.id == root_name
-             and isinstance(node.ctx, (ast.Store, ast.Del)))
-            or (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                and node.name == root_name)
-            or (isinstance(node, ast.arg) and node.arg == root_name)
-            for node in ast.walk(tree)
-        )
-        return known_abort and not rebound
-
     for validator in validators:
         result["guard_line"] = validator.line
         if validator.name != name:
@@ -290,34 +326,15 @@ def check_validator_dominance(
         elif isinstance(test, ast.Compare) and len(test.ops) == 1:
             valid_failure = (_len_arg(test.left) == name
                              and isinstance(test.ops[0], (ast.Gt, ast.GtE)))
-        if not valid_failure or not exits(guard.body) or guard.orelse:
+        if not valid_failure or not _guard_exits(tree, fn, guard.body) or guard.orelse:
             return {**result, "reason": "guard does not unconditionally exit on validation failure"}
         if (guard.end_lineno or guard.lineno) >= sink_line:
             return {**result, "reason": "guard is not before the sink"}
         if any(line <= guard.end_lineno for line in context["value_lines"]):
             return {**result, "reason": "SQL value was captured before the guard"}
-        if any(isinstance(node, ast.Nonlocal) and name in node.names for node in ast.walk(fn)):
-            return {**result, "reason": "variable may be reassigned through a closure"}
-        for node in _local_nodes(fn):
-            line = getattr(node, "lineno", 0)
-            if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
-                return {**result, "reason": "sink variable is not local"}
-            if not (guard.end_lineno < line <= sink_line):
-                continue
-            if isinstance(node, ast.Name) and node.id == name and isinstance(
-                node.ctx, (ast.Store, ast.Del)
-            ):
-                return {**result, "reason": "variable reassigned or mutated after guard"}
-            if isinstance(node, (ast.Subscript, ast.Attribute)) and isinstance(
-                node.ctx, (ast.Store, ast.Del)
-            ) and _uses_names(node.value, {name}):
-                return {**result, "reason": "variable mutated after guard"}
-            if isinstance(node, ast.Call) and _uses_names(node, {name}):
-                is_sink = (isinstance(node.func, ast.Attribute) and node.func.attr == "execute"
-                           and line <= sink_line <= (node.end_lineno or line))
-                if (not is_sink and _match_call(node) is None
-                        and _ctype_call(node, {name}) is None and _len_arg(node) != name):
-                    return {**result, "reason": "variable passed to a call after guard"}
+        if not _value_unchanged(fn, name, guard.end_lineno or guard.lineno, sink_line):
+            return {**result,
+                    "reason": "variable reassigned, mutated or passed to a call after guard"}
     return {**result, "dominates": True, "reason": "same-variable top-level exit guards dominate"}
 
 

@@ -5,12 +5,14 @@ public scanner, evidence and adjudicator interfaces. Run it from this source
 checkout: the existing package build includes only `pulseguard`, so `eval` needs
 the checkout on `PYTHONPATH`.
 
-The corpus has **27 labels: 14 vulnerable and 13 safe**. Twenty-two labels are in
-three new files in `demo_target/eval_cases/`; five are in the existing demo. The
-new files are scanner fixtures, never imported or registered by the demo app or
+The original corpus has **27 labels: 14 vulnerable and 13 safe**. Twenty-two labels are in
+three files in `demo_target/eval_cases/`; five are in the existing demo. The hard
+corpus adds **40 SQLi sites: 19 vulnerable and 21 safe**, for **67 combined sites:
+33 vulnerable and 34 safe**. The fixtures are never imported or registered by the demo app or
 its tests. Judge their handlers as if called with a request and a populated
-orders table. The in-memory database keeps the source self-contained; these are
-static-analysis cases, not executable deployment or exploitability proofs.
+orders table. The original fixtures use in-memory connections; the hard fixtures
+expect `current_app.extensions['eval_db']`, supplied by their sanity tests, with
+`orders` and `saved_filters` tables. These are analysis fixtures, not deployed services.
 
 This is a small, author-written set, not a held-out benchmark. Counts describe
 only these cases. Do not generalise the ratios to production code, other Flask
@@ -22,10 +24,16 @@ Thresholds remain at the framework defaults; no tuning claim is made.
 From the repository root, with the project's virtual environment (see the main README):
 
 ```powershell
-$python = '.venv/Scripts/python'   # .venv/bin/python on Linux/macOS
+$python = '<existing-environment>/Scripts/python'
 $env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONPATH = (Get-Location).Path
 
-& $python -m eval.ablation --target demo_target --out eval/results --name deterministic
+& $python -m eval.ablation --target demo_target --corpus original --out eval/results `
+    --name original-deterministic
+& $python -m eval.ablation --target demo_target --corpus hard --out eval/results `
+    --name hard-deterministic
+& $python -m eval.ablation --target demo_target --corpus all --out eval/results `
+    --name all-deterministic
 ```
 
 The default modes are `semgrep,bandit,llm,neurosymbolic`. Outputs are
@@ -33,6 +41,13 @@ The default modes are `semgrep,bandit,llm,neurosymbolic`. Outputs are
 Missing scanners produce explicit **not run** rows and a nonzero exit status,
 while successful modes still produce reports. Missing LLM opt-in alone does not
 make the command fail. A successful scan with zero hits is a completed row.
+
+`--corpus` defaults to `original` to preserve the earlier denominator. `hard`
+selects only `eval_cases/hard/`; `all` includes both sets. Scanners still inspect
+the target, but hits from excluded corpus files are removed before matching or
+model candidate construction. Reports record `excluded_corpus_hits`, selected-file
+hashes and corpus configuration. Combined reports show separate corpus counts and
+confusion matrices as well as the combined matrix. No rules change with selection.
 
 To run a single deterministic mode, for example Bandit only:
 
@@ -88,6 +103,14 @@ replies are also negative.
 This ablation covers scanner evidence and adjudication. It does not run Guard,
 Skeptic, citation verification, counterfactuals, PoC execution, exposure inference,
 patching or governance. A confirmed ablation decision is not permission to remediate.
+Neuro-symbolic now supplies annotation-stripped source and a separate analysis-limits
+list to the same evidence builder used by the pipeline. Recognised finite allow-list
+facts record the constrained variable, line and literal members. E3 says **none
+recognised**, never that a sanitizer is absent. A `not_covered` L-item enumerates
+the actual pattern checks and warns that other guards may exist. Legacy int/binding
+regex hits are explicitly syntax matches, with sink use unproven. L-ids remain
+uncitable. These evidence changes do not alter scanner rules.
+
 Neuro-symbolic uses the scanner union, so it has a different candidate pool from
 Semgrep alone; interpret that comparison accordingly.
 
@@ -138,30 +161,33 @@ model decisions and unusable-reply counts, Python/scanner versions, model name,
 thresholds and SHA-256 hashes of the Python/manifests in the target. Reports do
 not include credentials or raw provider exception messages.
 
-## Actual deterministic run
+## Actual deterministic runs (2026-11-01)
 
-The checked-in [Markdown](results/deterministic.md) and
-[JSON](results/deterministic.json) come from a real local run. Bandit 1.9.4 produced
-34 raw hits: 23 matched hits and 11 unlabelled/unmatched hits. Its 12 SQLi true
-positives and 11 SQLi false positives give the following aggregate over all labels:
+| Corpus | Sites | Vulnerable | Safe | Bandit TP | FP | FN | TN | Precision | Recall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| original | 27 | 14 | 13 | 12 | 11 | 2 | 2 | .5217 | .8571 |
+| hard | 40 | 19 | 21 | 18 | 16 | 1 | 5 | .5294 | .9474 |
+| combined | 67 | 33 | 34 | 30 | 27 | 3 | 7 | .5263 | .9091 |
 
-| Mode | Status | TP | FP | FN | TN | Precision | Recall | F1 | FP rate | FN rate |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| semgrep | not run | — | — | — | — | — | — | — | — | — |
-| bandit | completed | 12 | 11 | 2 | 2 | 0.5217 | 0.8571 | 0.6486 | 0.8462 | 0.1429 |
-| llm | not run | — | — | — | — | — | — | — | — | — |
-| neurosymbolic | not run | — | — | — | — | — | — | — | — | — |
+Real outputs are `results/{original,hard,all}-deterministic.{json,md}`. Python
+3.12 and Bandit 1.9.4 were used. Each invocation exited 1 because Semgrep could
+not run (`CertOpenSystemStore returned NULL`); no Semgrep metrics were fabricated.
+Both model modes are explicitly **not run**, with zero model calls. The hard
+Bandit FN is `two_hop`: its SQL construction is in an unlabelled helper, so that
+helper's hit is audited separately rather than incorrectly matched to the handler.
+Original dependency/guard-class FNs remain outside adjudicator ownership.
 
-Semgrep failed with `CertOpenSystemStore returned NULL` inside the Windows
-sandbox. No LLM was supplied. There is no measured neural improvement or
-threshold-tuning result to report. Keep these artifacts as the deterministic
-baseline and write any real model run to a separate output directory.
+The pre-existing `results/deterministic.*` historical artifacts are retained
+unchanged. Their Semgrep run succeeded on its recording host; this sandbox run
+does not supersede it with a synthetic measurement. The earlier README described
+an older sandbox attempt; use the timestamped artifacts for provenance.
 
 ## Verification
 
 ```powershell
 & $python -m pytest -q -rs
 & $python -m ruff check .
+& $python -m pulseguard.replay.verify
 ```
 
 Real Semgrep tests carry `@pytest.mark.semgrep` and skip with their scanner failure
@@ -174,6 +200,25 @@ The fixtures intentionally preserve `%` and `.format` SQL construction;
 `UP031`/`UP032` are suppressed locally in those three fixture files. Other Ruff
 checks apply normally.
 
+On this sandbox the final full-suite attempt reported **408 passed, 4 skipped,
+4 failed, 217 errors** (13.27 s). All 221 failures/errors were Windows `WinError 5`
+access failures on pytest or sandbox temporary directories under the authorised
+tmp root; there were no other assertion failures. The four skips were real
+Semgrep integration tests (one ablation, two sandbox, one scanner), all reporting
+`CertOpenSystemStore returned NULL`. Temp-dependent Trivy tests errored during
+fixture setup, so their availability was not measured. One existing Pydantic
+forward-reference warning was reported. This is **not a green full-suite claim**.
+
+The evidence/corpus/ST-1 subset ran **177 passed, 1 deselected** (6.49 s):
+`pytest tests/test_allowlist_evidence.py tests/test_evidence.py tests/test_hard_corpus.py
+tests/test_z3_governance.py tests/test_z3_check.py -q -rs -p no:cacheprovider
+-k 'not verify_finding_includes_validator_lines'`. The one deselected test needs
+the inaccessible temporary-directory fixture. Ruff reported **All checks passed!**
+and replay verification returned **ok: true**, **49 checked**, no mismatches,
+missing or unlisted files. Replay manifest SHA-256:
+`5357741cc6e0222de7e622e7e21d6765e129036ff1182bab0db2ee0f579827b2`.
+The full suite needs rerunning in a working authorised Windows test environment.
+
 ## Source adaptation
 
 The annotation-driven ground-truth approach is adapted from
@@ -184,3 +229,163 @@ paired JSON/Markdown reporting adapts
 [`src/evaluation/reporter.py`](https://github.com/witold-andelie/SymbAI-Taint/blob/main/src/evaluation/reporter.py).
 These are Python/Flask reimplementations of those ideas; no C/binary analysis,
 DWARF inference, angr, TYGR or inferred ground truth is brought into the harness.
+
+## Hard corpus: case inventory and scope
+
+All 40 handlers are original code written for this evaluation, with no upstream
+handler copied. `tests/test_hard_corpus.py` registers their isolated blueprints
+only inside its own Flask test app. It supplies an in-memory populated database,
+exercises all 19 vulnerable bypasses, checks all 21 safe controls, and verifies
+the four vulnerable/patched pairs. Importing the fixtures does no network or file
+IO. None is imported by the demo app. Nonmember casts/lookups may raise; this
+fails closed for SQLi and is not a claim about application availability.
+
+Provenance keys: **B** = BenchmarkPython request/SQL/binding patterns and OWASP
+positive/negative design; **C** = CommentInject safety-comment strategy; **D** =
+code-safety source/propagation/sink documentation and safe-query controls; **T** =
+PyT Flask, helper and sanitizer/constant-flow patterns; **P** = PyFlow patched-version
+method; **A** = author-written mutation or control requested for this corpus.
+Keys describe inspiration, not replication of an upstream test or its results.
+
+Every normal SQL sink below is `conn.execute(query)` unless stated otherwise.
+All bypass cases in `hard/bypasses.py` use query parameters; the reassignment
+case also uses a header. For numeric queries `1 OR 1=1` (or the shown newline
+variant) returns three rows instead of the one-row ID lookup. Identifier attacks
+use `id LIMIT 1` to alter the three-row query's structure and result count.
+
+| Handler in `hard/bypasses.py` | Label | Source / attempted sanitizer / sink pattern | Modelled on |
+| --- | --- | --- | --- |
+| `regex_search` | vuln | args -> unanchored search -> numeric SQL | A, D |
+| `regex_dollar_multiline` | vuln | args -> `$` with MULTILINE -> `1\nOR 1=1` | A |
+| `regex_match_prefix` | vuln | args -> re.match prefix -> unchecked suffix | A, P pair 1 |
+| `length_only` | vuln | args -> length <= 8 -> numeric SQL | A |
+| `case_allowlist_fallthrough` | vuln | case-sensitive membership normalises members only; nonmembers fall through, then lower at sink | A |
+| `different_variable` | vuln | one args value checked, another reaches identifier SQL | A, D |
+| `one_branch` | vuln | args -> optional regex branch -> numeric SQL | A, T |
+| `try_fallback` | vuln | args -> int error -> raw fallback -> numeric SQL | A, P pair 2 |
+| `validated_reassigned` | vuln | args allow-list -> header reassignment -> identifier SQL | A |
+| `validated_concatenated` | vuln | args allow-list -> raw suffix -> identifier SQL | A |
+| `discarded_int` | vuln | args -> discarded int result, swallowed error -> raw SQL | A |
+| `quote_escape_numeric` | vuln | args -> quote doubling -> unquoted numeric SQL | A |
+| `escape_format_numeric` | vuln | quote doubling -> f-string width spec -> numeric SQL | A |
+
+`$` alone allows a final newline, but digits plus whitespace alone do **not**
+demonstrate SQLi. `dollar_final_newline` is therefore safe; the vulnerable partner
+uses MULTILINE to permit an SQL suffix. Similarly, lowercasing an actually finite
+validated set does not by itself create an injection. The vulnerable case is a
+fall-through validation error; `normalised_allowlist` is its safe control. A
+discarded int conversion with an uncaught failure would block nonnumeric input;
+the vulnerable fixture explicitly swallows that failure. Labels reflect actual
+SQL behaviour, not just a validator weakness.
+
+| Handler in `hard/safes.py` | Label | Source -> sanitizer / safe sink | Modelled on |
+| --- | --- | --- | --- |
+| `set_guard` | safe | args -> literal set exit guard -> identifier | A, D |
+| `tuple_positive` | safe | args -> tuple membership wraps identifier sink | A, T |
+| `dict_subscript` | safe | args -> constant dict values; missing key raises | A, D |
+| `dict_get` | safe | args -> constant dict + fixed default | A, D |
+| `enum_column` | safe | args -> Enum value or exception -> identifier | A |
+| `conditional_column` | safe | args -> membership ternary with fixed default | A |
+| `integer_used` | safe | args -> int result -> numeric SQL | A, T |
+| `float_used` | safe | args -> float result -> numeric SQL; nonfinite values may error | A, T |
+| `positional_binding` | safe | form -> `?` binding, constant query concatenation | B |
+| `named_binding` | safe | JSON -> `:item` binding | B, D |
+| `batch_binding` | safe | JSON list -> executemany with bound tuples | A, B |
+| `bound_builder` | safe | header -> ORM-style builder -> named binding (interprocedural) | T, D |
+| `quoted_mapping` | safe | args -> fixed already-quoted identifier mapping | A, D |
+| `constant_sql` | safe | args ignored; literal-only SQL assembled with + | T, D |
+| `regex_fullmatch_patch` | safe | args -> fullmatch used on every path | A, P pair 1 |
+| `try_failclosed_patch` | safe | args -> int result, exception exits | A, P pair 2 |
+| `normalised_allowlist` | safe | args lowercased before the same-value finite check | A |
+| `dollar_final_newline` | safe | digits with at most one final newline; numeric SQL whitespace | A |
+
+| Handler in `hard/flows.py` | Label | Source / propagation / sink | Modelled on |
+| --- | --- | --- | --- |
+| `two_hop` | vuln | form -> forward_rows -> fetch_rows -> raw numeric SQL | T, D; interprocedural |
+| `helper_cast` | safe | cookie -> integer_in_helper -> numeric SQL | T; interprocedural |
+| `misleading_helper` | vuln | JSON -> identity function named sanitize_id -> raw numeric SQL | A, T; interprocedural |
+| `second_order` | vuln | JSON -> bound storage -> re-read -> raw SQL | A, D stored-flow idea, P pair 3 |
+| `second_order_patch` | safe | JSON -> bound storage -> re-read -> bound SQL | A, P pair 3 |
+| `path_value` | vuln | Flask path argument -> numeric SQL | B, T, P pair 4 |
+| `path_value_patch` | safe | same Flask path argument -> bound SQL | B, P pair 4 |
+
+The helper and builder cases exceed intraprocedural reasoning. The second-order
+pair also requires modelling database storage and retrieval; it is not expected
+to be proved by the local taint rule. Its deterministic test stores and retrieves
+in one request to keep the example reproducible, with a fresh table per test.
+Path arguments are ordinary source coverage, separate from the helper limitation.
+
+| Isolated file / handler | Label | Flow and adversarial pattern | Modelled on |
+| --- | --- | --- | --- |
+| `hard/comment_upstream.py` / `comment_upstream` | vuln | header -> raw numeric SQL; upstream validation assertion | C |
+| `hard/comment_reviewer.py` / `comment_reviewer` | vuln | cookie -> raw numeric SQL; AI reviewer safe/resolve instruction | C |
+
+Each adversarial-comment file has only one handler. This prevents whole-file
+Guard quarantine from affecting unrelated hard cases. These labels are SQLi,
+not additional prompt-injection ground truth. The ablation does not run Guard.
+
+## Sources
+
+Read on **2026-11-01**. Only patterns and evaluation ideas were used; no upstream
+code, datasets, license texts or papers were vendored. These are author-written
+fixtures, not a repackaged or held-out upstream benchmark.
+
+- **B — OWASP BenchmarkPython CWE-89:** [requested repository](https://github.com/AppSec-Tool-Benchmarking/OWASP-BenchmarkPython),
+  [00011 bound cookie source](https://github.com/AppSec-Tool-Benchmarking/OWASP-BenchmarkPython/blob/main/testcode/BenchmarkTest00011.py),
+  [00012 bound propagated cookie](https://github.com/AppSec-Tool-Benchmarking/OWASP-BenchmarkPython/blob/main/testcode/BenchmarkTest00012.py),
+  [00099 form/config propagation into raw SQL](https://github.com/AppSec-Tool-Benchmarking/OWASP-BenchmarkPython/blob/main/testcode/BenchmarkTest00099.py).
+  [Python case design](https://owasp.org/projects/benchmark?tab=python-test-cases)
+  documents expected true findings and false positives; [scoring](https://owasp.org/projects/benchmark?tab=scoring)
+  motivates measuring both. The repository [LICENSE](https://github.com/AppSec-Tool-Benchmarking/OWASP-BenchmarkPython/blob/main/LICENSE)
+  and case headers say **GPL-3.0**, despite the general OWASP page displaying
+  GPL-2.0. No source was copied into this proprietary project.
+- **C — Sunny Chokshi, CommentInject:** [dataset card and CWE-89 samples](https://huggingface.co/datasets/sunny-chokshi/commentinject).
+  The card documents holding vulnerable code fixed while adding false safety
+  comments. Licence metadata: **CC-BY-4.0**. Our two isolated comments/handlers
+  are original variants; attribution here records the strategy used. The dataset
+  has no safe controls; our safe controls are independently authored.
+- **D — Laurent Giovannoni, code-safety:** [repository](https://github.com/laugiov/code-safety),
+  [taint-flow definitions](https://github.com/laugiov/code-safety/blob/master/benchmarks/ground-truth/taint-flows.yaml),
+  [CWE-89 ground truth/remediation](https://github.com/laugiov/code-safety/blob/master/benchmarks/ground-truth/vulnerabilities.json),
+  [false-positive discussion](https://github.com/laugiov/code-safety/blob/master/docs/enterprise/false-positives.md).
+  Used explicit source/propagation/sink descriptions and binding/constant-query
+  controls as the documentation model. The [LICENSE](https://github.com/laugiov/code-safety/blob/master/LICENSE)
+  is **MIT**, with an appended educational/security-use notice, both read.
+  This source is a GitHub Django reference, not a Hugging Face dataset.
+- **T — python-security/PyT:** [Flask SQL examples](https://github.com/python-security/pyt/blob/master/examples/vulnerable_code/sql/sqli.py),
+  [sanitised/unknown-flow explanation](https://github.com/python-security/pyt/blob/master/pyt/vulnerabilities/README.rst),
+  [constant-return false-positive fixture](https://github.com/python-security/pyt/blob/master/examples/vulnerable_code_across_files/no_false_positive_import_file_command_injection_3.py),
+  [README](https://github.com/python-security/pyt#readme).
+  Used raw-vs-bound Flask SQL, helper-return/constant controls and conditional
+  sanitizer uncertainty. The constant-flow example is command injection; our
+  SQL version is a new analogue, not an upstream CWE-89 case. [Licence](https://github.com/python-security/pyt/blob/master/LICENSE):
+  **GPL-2.0**; no source copied. The README warns about pattern-baseline noise;
+  we do not claim every hard case is an established PyT bug.
+- **P — Zinan Gu, Haoxiang Yan, Peisen Yao, PyFlow:** [verified arXiv record 2608.07026](https://arxiv.org/abs/2608.07026),
+  [full text, evaluation dataset section](https://arxiv.org/html/2608.07026v1).
+  Submitted 7 August 2026. It independently evaluates vulnerable and patched
+  programs, treating a matching patched-version alert as an FP. Our four
+  synthetic pairs adapt that method, without claiming CVE provenance. The arXiv
+  record links a **CC-BY-4.0** licence; no paper text or implementation copied.
+
+## Remaining coverage gaps exposed by the hard set
+
+No scanner rule was changed. Inspection of the existing local Semgrep rule shows
+only `flask.request.args.get(...)` as a source; form, get_json, headers, cookies
+and path-parameter cases require a future coverage decision. This is source
+inspection, not a measured Semgrep result on this host. Helper and stored flows
+also exceed the stated intraprocedural scope. Bandit's hard FN is the two-hop
+handler, with its helper finding retained as unmatched in JSON.
+
+The existing Bandit trace slicer omits header/cookie/get_json source claims and
+does not model control-flow branches or database storage. The E3 regex candidates
+are now clearly marked syntax-only; proving int-result use and parameter-binding
+semantics remains future work. Enum, prequoted identifier mapping, arbitrary
+helpers and f-string format specifications are outside finite-value recognition;
+they receive honest coverage limits rather than invented sanitizer facts.
+
+LLM-only excerpts still contain only the enclosing function. Module constants,
+Enum definitions and helper implementations can therefore be missing context for
+hard safe/interprocedural cases. Evidence can recover supported constants for
+neuro-symbolic mode, but the code-only context gap is left unchanged and should
+be considered when interpreting the reviewer-run model comparison.

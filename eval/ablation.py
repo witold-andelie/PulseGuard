@@ -17,11 +17,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from eval.labels import (
+    CORPORA,
     LINE_WINDOW,
     Site,
     extract_labels,
     finding_class,
+    in_corpus,
     match_site,
+    site_corpus,
     strip_annotations,
 )
 from eval.metrics import compute_metrics
@@ -121,6 +124,10 @@ def _completed(
                 [s for s in sites if s.vulnerability_class == cls],
                 flagged & {s.site_id for s in sites if s.vulnerability_class == cls},
             ).to_dict() for cls in sorted({s.vulnerability_class for s in sites})},
+            "by_corpus": {corpus: compute_metrics(
+                [s for s in sites if site_corpus(s.file) == corpus],
+                flagged & {s.site_id for s in sites if site_corpus(s.file) == corpus},
+            ).to_dict() for corpus in sorted({site_corpus(s.file) for s in sites})},
             "flagged_sites": sorted(flagged), "candidates": candidates,
             "model_calls": len(decisions),
             "model_failures": sum(d["unusable_reply"] for d in decisions),
@@ -148,7 +155,7 @@ def _version(scanner: str) -> str:
 def run_ablation(
     target: str | Path, *, modes: Iterable[str] = MODES, llm: LLMClient | None = None,
     semgrep: Scanner[SemgrepResult] | None = None, bandit: Scanner[BanditResult] | None = None,
-    bands: Bands = DEFAULT_BANDS, line_window: int = LINE_WINDOW,
+    bands: Bands = DEFAULT_BANDS, line_window: int = LINE_WINDOW, corpus: str = "original",
 ) -> dict[str, Any]:
     """Evaluate each label once per mode; never turn unavailable scans into no hits.
 
@@ -163,7 +170,7 @@ def run_ablation(
     if line_window < 0:
         raise ValueError("line_window must be nonnegative")
     target = Path(target).resolve()
-    sites = extract_labels(target)
+    sites = extract_labels(target, corpus=corpus)
     if not sites:
         raise ValueError("target contains no labelled sites")
     neural = llm is not None and bool(set(selected) & {"llm", "neurosymbolic"})
@@ -180,8 +187,12 @@ def run_ablation(
         try:
             results = runner.run(target)
             hits[name] = []
+            excluded = 0
             for result in results:
                 result = replace(result, path=str(_path(result.path, target)))
+                if not in_corpus(Path(result.path).relative_to(target).as_posix(), corpus):
+                    excluded += 1
+                    continue
                 finding = (normalize(result, target) if isinstance(result, SemgrepResult)
                            else normalize_bandit(result, target))
                 site = match_site(finding, sites, target, line_window=line_window)
@@ -191,8 +202,9 @@ def run_ablation(
                        else "not applicable (injected runner)")
             scans[name] = {"status": "completed", "version": version,
                            "runner": type(runner).__name__,
-                           "hits": len(results), "matched_hits": matched,
-                           "unmatched_hits": len(results) - matched,
+                           "hits": len(hits[name]), "matched_hits": matched,
+                           "excluded_corpus_hits": excluded,
+                           "unmatched_hits": len(hits[name]) - matched,
                            "findings": [{"file": hit.finding.file, "line": hit.finding.line,
                                          "rule": hit.finding.rule_id,
                                          "site": hit.site.site_id if hit.site else None,
@@ -238,8 +250,11 @@ def run_ablation(
                 block = CODE_HEADER + "\n" + excerpt(
                     code, finding.line, python=path.suffix == ".py")
             else:
-                items = build_hard_evidence(finding, _clean_trace(trace, code))
-                block = render_block(items, strip_annotations(code), sink_line=finding.line)
+                clean = strip_annotations(code)
+                limits: list[dict[str, Any]] = []
+                items = build_hard_evidence(finding, _clean_trace(trace, code), code=clean,
+                                           analysis_limits=limits)
+                block = render_block(items, clean, sink_line=finding.line, analysis_limits=limits)
             metadata: dict[str, Any] = {}
             result = adjudicate(finding, block, llm=llm, metadata=metadata)
             confirmed = (result.score >= 0.7 if mode == "llm" else
@@ -259,8 +274,9 @@ def run_ablation(
     hashes = {p.relative_to(target).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in sorted(target.rglob("*"))
               if p.is_file() and (p.suffix == ".py" or p.name == "requirements.txt")}
+    hashes = {file: digest for file, digest in hashes.items() if in_corpus(file, corpus)}
     return build_report(sites, rows, target=target.name, scanners=scans, corpus_hashes=hashes,
-                        configuration={"python": platform.python_version(),
+                        configuration={"python": platform.python_version(), "corpus": corpus,
                                        "line_window": line_window, "llm_threshold": 0.7,
                                        "bands": {"confirmed_at": bands.confirmed_at,
                                                  "uncertain_at": bands.uncertain_at},
@@ -277,6 +293,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--modes", default=",".join(MODES))
     parser.add_argument("--name", default="ablation", help="report filename stem")
+    parser.add_argument("--corpus", choices=CORPORA, default="original")
     args = parser.parse_args(argv)
     modes = tuple(part.strip() for part in args.modes.split(","))
     try:
@@ -284,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.env_file and set(modes) & {"llm", "neurosymbolic"}:
             load_env_file(args.env_file)
             llm = make_llm()
-        report = run_ablation(args.target, modes=modes, llm=llm)
+        report = run_ablation(args.target, modes=modes, llm=llm, corpus=args.corpus)
         write_report(report, args.out, name=args.name)
     except (ValueError, OSError, LLMConfigError) as exc:
         parser.error(str(exc))
