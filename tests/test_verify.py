@@ -40,10 +40,11 @@ def test_present_but_non_claim_evidence_cannot_be_cited(eid, payload):
 
 
 def test_cited_location_pass_and_fail(tmp_path):
-    (tmp_path / "routes.py").write_text("a = 1\nb = 2\n", encoding="utf-8")
+    (tmp_path / "routes.py").write_text('a = request.args.get("id")\nb = 2\n', encoding="utf-8")
     finding = {"file": "routes.py", "line": 1, "fingerprint": "a" * 16, "extra": {}}
     evidence = [{"evidence_id": "E1", "kind": "rule_source", "text": "x",
-                 "payload": {"file": "routes.py", "line": 1, "source": "a = 1"}}]
+                 "payload": {"file": "routes.py", "line": 1,
+                             "source": 'request.args.get("id")'}}]
     assert check_cited_location(finding, ["E1"], evidence, tmp_path)["ok"]
     evidence[0]["payload"]["source"] = "missing"
     assert not check_cited_location(finding, ["E1"], evidence, tmp_path)["ok"]
@@ -124,13 +125,15 @@ def test_rerun_hash_injected_scanner_and_trivy(tmp_path):
 
 
 def test_verify_finding_ok_requires_every_check(tmp_path):
-    (tmp_path / "routes.py").write_text("sink()\n", encoding="utf-8")
+    (tmp_path / "routes.py").write_text('sink(request.args.get("id"))\n', encoding="utf-8")
     finding = {
         "file": "routes.py", "line": 1, "fingerprint": "ab" * 16, "scanner": "semgrep",
-        "extra": {}, "trace": [{"kind": "sink", "line": 1, "content": "sink()"}],
+        "extra": {}, "trace": [{"kind": "sink", "line": 1,
+                                 "content": 'sink(request.args.get("id"))'}],
     }
     evidence = [{"evidence_id": "E1", "kind": "rule_source", "text": "x",
-                 "payload": {"file": "routes.py", "line": 1, "source": "sink()"}}]
+                 "payload": {"file": "routes.py", "line": 1,
+                             "source": 'request.args.get("id")'}}]
     report = verify_finding(
         finding, evidence=evidence, cited=["E1"], target=tmp_path,
         scanner=EchoScanner(finding),

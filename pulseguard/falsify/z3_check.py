@@ -1,8 +1,8 @@
 """z3 constraint solving on input validators (framework 6, ST-1).
 
 Question: can a value that passes the validators still contain a quote (string
-sink) or any non-digit (numeric sink)? ``unsat`` is counter-evidence against
-SQLi through that parameter; ``sat`` yields a witness that can seed a PoC;
+sink) or a character other than digits and whitespace (numeric sink)? ``unsat`` is
+counter-evidence against SQLi through that parameter; ``sat`` yields a witness that can seed a PoC;
 ``unknown`` makes no claim.
 
 Only a small regex subset is translated (anchors, character classes with ranges and
@@ -22,6 +22,11 @@ from typing import Any, Literal
 SOLVER_TIMEOUT_MS = 2000
 DEFAULT_NEEDLE = "'"
 _PREFERRED_SQLI = "' OR 1=1"
+NUMERIC_NEEDLE = r"[^0-9\s]"
+# Python str.isspace()/regex \s semantics, including ASCII SQL whitespace.
+_WHITESPACE = ('\t\n\v\f\r\x1c\x1d\x1e\x1f \x85\xa0\u1680'
+               '\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a'
+               '\u2028\u2029\u202f\u205f\u3000')
 _SOURCE_MARK = re.compile(
     r"(?:flask\.)?request\.(?:args|form|values|json|cookies|headers)"
     r"(?:\.get\([^)]*\)|\[[^\]]*\])?"
@@ -740,7 +745,7 @@ def _max_len_of(validators: list[Validator]) -> int | None:
 
 
 def _preferred(needle: str, max_len: int | None, has_regex: bool) -> list[str]:
-    if needle == "[^0-9]":
+    if needle == NUMERIC_NEEDLE:
         return [candidate for candidate in ("1 OR 1=1", "A")
                 if max_len is None or len(candidate) <= max_len]
     ordered = [needle, _PREFERRED_SQLI] if has_regex else [_PREFERRED_SQLI, needle]
@@ -778,12 +783,14 @@ def _solve(
         Intersect,
         Length,
         Range,
+        Re,
         ReSort,
         Solver,
         Star,
         String,
         StringSort,
         StringVal,
+        Union,
         sat,
         unsat,
     )
@@ -797,10 +804,11 @@ def _solve(
         if max_len is not None:
             solver.add(Length(payload) <= max_len)
             solver.add(Length(payload) >= 0)
-        if needle == "[^0-9]":
+        if needle == NUMERIC_NEEDLE:
             char = AllChar(ReSort(StringSort()))
-            non_digit = Intersect(char, Complement(Range("0", "9")))
-            solver.add(InRe(payload, Concat(Star(char), non_digit, Star(char))))
+            allowed = Union(Range("0", "9"), *(Re(ch) for ch in _WHITESPACE))
+            other = Intersect(char, Complement(allowed))
+            solver.add(InRe(payload, Concat(Star(char), other, Star(char))))
         else:
             solver.add(Contains(payload, StringVal(needle)))
 
@@ -838,9 +846,10 @@ def check_validators(
     """
     context = sink_context(code, source_line, sink_line)["context"]
     if context == "numeric":
-        needle = "[^0-9]"
+        needle = NUMERIC_NEEDLE
     question = {"string": "admits a quote (string sink)?",
-                "numeric": "admits a non-digit (numeric sink)?"}.get(context, "")
+                "numeric": "admits a character other than digits and whitespace (numeric sink)?"
+                }.get(context, "")
     validators = extract_validators(code, source_line, sink_line, file=file)
     if not validators:
         return _no_claim("", needle, [], "no validators on the taint path", context, question)

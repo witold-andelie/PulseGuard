@@ -210,7 +210,8 @@ def test_scenario_3_int_cast_false_positive_dropped(tmp_path):
     src = (FIXTURES / "bandit_fp" / "routes.py").read_text(encoding="utf-8")
     (target / "routes.py").write_text(src, encoding="utf-8")
     lines = src.splitlines()
-    source = next(i for i, line in enumerate(lines, 1) if "int(" in line)
+    # The docstring also mentions "int()", so locate the request read itself.
+    source = next(i for i, line in enumerate(lines, 1) if "request.args" in line)
     sink = next(i for i, line in enumerate(lines, 1) if "execute" in line)
     finding = {
         "case_id": "PG-banditfp0001", "fingerprint": _fp("B608", "routes.py", "int"),

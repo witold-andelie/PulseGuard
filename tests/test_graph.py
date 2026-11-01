@@ -62,15 +62,17 @@ def test_retry_limit(sample_run):
 def test_persistent_manual_approval_and_bundle(tmp_path, sample_run, mode, decision):
     case = sample_run["cases"][0]
     target = tmp_path / "target.py"
-    target.write_text("unsafe()\n", encoding="utf-8")
+    source = 'raw = request.args.get("id")'
+    original = source + '\nunsafe(raw)\n'
+    target.write_text(original, encoding="utf-8")
     patchset = {
-        "ops": [{"path": "target.py", "old": "unsafe()", "new": "safe()"}],
+        "ops": [{"path": "target.py", "old": "unsafe(raw)", "new": "safe(raw)"}],
         "rationale": "Test-only injected patch", "attempt": 1,
     }
     finding = {
-        **case["finding"], "file": "target.py", "line": 1,
-        "trace": [{"kind": "source", "line": 1, "content": "unsafe()"},
-                  {"kind": "sink", "line": 1, "content": "unsafe()"}],
+        **case["finding"], "file": "target.py", "line": 2,
+        "trace": [{"kind": "source", "line": 1, "content": source},
+                  {"kind": "sink", "line": 2, "content": "unsafe(raw)"}],
     }
     deps = GraphDeps(
         adjudicate=lambda state: case["verdicts"][0],
@@ -87,18 +89,18 @@ def test_persistent_manual_approval_and_bundle(tmp_path, sample_run, mode, decis
     status = asyncio.run(start_case({"finding": finding}, deps, db))
     assert status["awaiting_approval"]
     assert status["values"]["events"][-1]["activity"] == "APPROVAL_REQUESTED"
-    assert target.read_text() == "unsafe()\n"
+    assert target.read_text() == original
     status = asyncio.run(resume_case(case["finding"]["case_id"], decision, "tester", deps, db))
     result = status["values"]
     assert not status["awaiting_approval"]
     if mode == "live" and decision == "approve":
-        assert target.read_text() == "unsafe()\n"
-        assert (deps.output_dir / "target" / "target.py").read_text() == "safe()\n"
+        assert target.read_text() == original
+        assert (deps.output_dir / "target" / "target.py").read_text() == source + '\nsafe(raw)\n'
         assert result["finding"]["state"] == "remediated"
         assert result["patchset"]["state"] == "applied"
-        assert "safe()" in result["bundle"]["patch"]
+        assert "safe(raw)" in result["bundle"]["patch"]
     else:
-        assert target.read_text() == "unsafe()\n"
+        assert target.read_text() == original
         assert result["finding"]["state"] == "confirmed"
     activities = [event["activity"] for event in result["events"]]
     assert activities.count("APPROVAL_REQUESTED") == 1

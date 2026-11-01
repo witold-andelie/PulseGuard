@@ -152,13 +152,15 @@ def test_validator_lines_check_pass_and_fail():
 
 
 def test_verify_finding_includes_validator_lines(tmp_path):
-    (tmp_path / "routes.py").write_text("sink()\n", encoding="utf-8")
+    (tmp_path / "routes.py").write_text('sink(request.args.get("id"))\n', encoding="utf-8")
     finding = {
         "file": "routes.py", "line": 1, "fingerprint": "ab" * 16, "scanner": "semgrep",
-        "extra": {}, "trace": [{"kind": "sink", "line": 1, "content": "sink()"}],
+        "extra": {}, "trace": [{"kind": "sink", "line": 1,
+                                 "content": 'sink(request.args.get("id"))'}],
     }
     evidence = [{"evidence_id": "E1", "kind": "rule_source", "text": "x",
-                 "payload": {"file": "routes.py", "line": 1, "source": "sink()"}}]
+                 "payload": {"file": "routes.py", "line": 1,
+                             "source": 'request.args.get("id")'}}]
     report = verify_finding(
         finding, evidence=evidence, cited=["E1"], target=tmp_path,
         scanner=EchoScanner(finding),

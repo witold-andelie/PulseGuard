@@ -15,6 +15,7 @@ from typing import Any
 
 from pulseguard.ingest import group_dependency_findings
 from pulseguard.scanners.normalize import fingerprint_for, normalize, normalize_trivy
+from pulseguard.scanners.trace_check import trace_line_issue
 from pulseguard.scanners.trivy import TrivyReportLoader
 
 CVE_RE = re.compile(r"CVE-\d{4}-\d+")
@@ -66,33 +67,44 @@ def check_cited_location(
 ) -> Check:
     """Cited file/line exist in the target and the line matches the trace."""
     by_id = {item["evidence_id"]: item for item in evidence}
-    locations: list[tuple[str, int, str]] = []
+    locations: list[tuple[str, int, str, str]] = []
     for eid in cited:
         item = by_id.get(str(eid))
         if item is None:
             continue
         payload = item.get("payload") or {}
+        if item.get("kind") == "rule_source" and any(
+            payload.get(key) is None for key in ("file", "line", "source")
+        ):
+            return _check("cited_location", False, "source trace has no confirmed file/line/call")
+        if item.get("kind") == "dataflow" and not payload.get("steps"):
+            return _check("cited_location", False, "dataflow trace has no confirmed steps")
         if payload.get("file") is not None and payload.get("line") is not None:
             locations.append(
-                (str(payload["file"]), int(payload["line"]), str(payload.get("source") or "")))
+                (str(payload["file"]), int(payload["line"]), str(payload.get("source") or ""),
+                 "source" if item.get("kind") == "rule_source" else ""))
         for step in payload.get("steps") or []:
             locations.append(
-                (finding["file"], int(step["line"]), str(step.get("content") or "")))
+                (finding["file"], int(step["line"]), str(step.get("content") or ""),
+                 str(step.get("kind") or "intermediate")))
     if not locations:
         file, line = finding["file"], int(finding["line"])
-        locations.append((file, line, ""))
-    for file, line, expected in locations:
+        locations.append((file, line, "", ""))
+    for file, line, expected, kind in locations:
         path = _safe_join(target, file)
         if path is None or not path.is_file():
             return _check("cited_location", False, f"{file} is not inside the target")
-        if line == 0:
+        if line == 0 and not kind:
             continue
-        rows = path.read_text(encoding="utf-8").splitlines()
+        code = path.read_text(encoding="utf-8")
+        rows = code.splitlines()
         if line < 1 or line > len(rows):
             return _check("cited_location", False, f"{file}:{line} is out of range")
         actual = rows[line - 1].strip()
         needle = expected.strip()
-        if needle and needle not in actual and actual not in needle:
+        if kind and (issue := trace_line_issue(code, line, expected, kind)):
+            return _check("cited_location", False, f"{file}: trace could not be confirmed: {issue}")
+        if not kind and needle and needle not in actual:
             return _check(
                 "cited_location", False,
                 f"{file}:{line} does not match the trace ({needle!r} vs {actual!r})")

@@ -18,6 +18,7 @@ from pulseguard.falsify.z3_check import (
     _local_nodes,
     _value_unchanged,
 )
+from pulseguard.scanners.trace_check import source_access
 
 
 def _literal(node: ast.AST) -> bool:
@@ -141,6 +142,10 @@ def _sink_values(fn: ast.AST, sink_line: int) -> list[tuple[str, int]]:
         arguments = _format_arguments(node)
         if arguments is not None:
             return [hole for arg in arguments for hole in holes(arg, before, seen)]
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == 'str' and len(node.args) == 1 and not node.keywords
+                and isinstance(node.args[0], ast.Name)):
+            return holes(node.args[0], before, seen)
         if isinstance(node, ast.Name) and node.id not in seen:
             definitions = [n for n in nodes if _assignment(n, node.id) is not None
                            and n.lineno < before]
@@ -396,6 +401,42 @@ def _helper_fact(value: ast.AST, tree: ast.Module) -> dict[str, Any] | None:
     return fact
 
 
+def _cast_fact(value: ast.AST, tree: ast.Module) -> dict[str, Any] | None:
+    if (not isinstance(value, ast.Call) or not isinstance(value.func, ast.Name)
+            or len(value.args) != 1 or value.keywords
+            or not (isinstance(value.args[0], ast.Name) or source_access(value.args[0]))):
+        return None
+    cast = value.func.id
+    if cast in {'int', 'float'}:
+        if not _unshadowed(tree, cast):
+            return None
+    elif cast == 'Decimal':
+        imports = [n for n in tree.body if isinstance(n, ast.ImportFrom)
+                   and n.module == 'decimal' and n.level == 0 and any(
+                       a.name == 'Decimal' and a.asname in (None, 'Decimal') for a in n.names)]
+        if len(imports) != 1 or not _unshadowed(tree, cast, imports[0]):
+            return None
+    else:
+        return None
+    return {'rule': f'{cast}-cast', 'cast': cast, 'line': value.lineno}
+
+
+def _exception_exits(tree: ast.Module, fn: ast.AST, body: list[ast.stmt]) -> bool:
+    """Prove all handler paths exit; unsupported control flow is not a proof."""
+    for statement in body:
+        if _guard_exits(tree, fn, [statement]):
+            return True
+        if (isinstance(statement, ast.If)
+                and _exception_exits(tree, fn, statement.body)
+                and _exception_exits(tree, fn, statement.orelse)):
+            return True
+        # Simple statements may precede the exit. Nested try/loops/with/finally
+        # could intercept it, so do not interpret them here.
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign, ast.Expr, ast.Pass, ast.If)):
+            return False
+    return False
+
+
 def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
     """Prove finite values/one-hop casts with shared sink dominance; silence on doubt."""
     try:
@@ -408,6 +449,12 @@ def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
     values = _sink_values(fn, sink_line)
     format_calls = {n for n in _local_nodes(fn) if isinstance(n, ast.Call)
                     and _format_arguments(n) is not None}
+    str_calls = {n for n in _local_nodes(fn) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name) and n.func.id == 'str'
+                 and len(n.args) == 1 and not n.keywords and isinstance(n.args[0], ast.Name)}
+    if str_calls and not _unshadowed(tree, 'str'):
+        return []
+    format_calls |= str_calls
     facts = []
     for statement in fn.body:
         rule = "allow-list membership guard"
@@ -417,6 +464,12 @@ def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
         after = statement.end_lineno or statement.lineno
         after_node = statement
         positive = False
+        if isinstance(statement, ast.Try):
+            if (len(statement.body) != 1 or statement.orelse or statement.finalbody
+                    or not statement.handlers or not all(
+                        _exception_exits(tree, fn, h.body) for h in statement.handlers)):
+                continue
+            statement = statement.body[0]
         if isinstance(statement, ast.If):
             test = statement.test
             if (not isinstance(test, ast.Compare) or len(test.ops) != 1
@@ -439,7 +492,8 @@ def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
                 continue
             name = targets[0].id
             value = statement.value
-            transform = _enum_fact(value, tree) or _helper_fact(value, tree)
+            transform = (_cast_fact(value, tree) or _enum_fact(value, tree)
+                         or _helper_fact(value, tree))
             if transform is not None:
                 rule = transform['rule']
                 members = transform.get('members')
@@ -500,6 +554,10 @@ def allowlist_facts(code: str, sink_line: int) -> list[dict[str, Any]]:
         fact = {"rule": rule, "line": statement.lineno, "variable": name}
         if transform is not None:
             fact.update(transform)
+            if 'cast' in transform:
+                fact['evidence'] = (f"{transform['cast']}-cast: {transform['cast']}() cast "
+                                    f"@ L{transform['line']}; result {name} reaches SQL sink "
+                                    f"@ L{sink_line}")
         else:
             fact['members'] = members
         facts.append(fact)

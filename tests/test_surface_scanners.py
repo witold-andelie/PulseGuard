@@ -46,12 +46,14 @@ def test_bandit_normalization_preserves_cast_context_and_exact_extra():
     shifted = replace(result, line=result.line + 10,
                       code=result.code.replace("1 number", "11 number"))
     assert finding.fingerprint == normalize_bandit(shifted, root=TARGET).fingerprint
-    evidence = build_hard_evidence(finding, result.trace)
-    assert evidence[2].payload["matched"] == [{
-        "rule": "int-cast", "line": next(step.line for step in finding.trace
-                                       if "int(raw_number)" in step.content),
-        "scope": "trace-line syntax only",
-    }]
+    evidence = build_hard_evidence(finding, result.trace,
+                                   code=(TARGET / "routes.py").read_text(encoding="utf-8"))
+    hit, = evidence[2].payload["matched"]
+    assert hit["rule"] == "int-cast"
+    assert hit["line"] == next(step.line for step in finding.trace
+                                if "int(raw_number)" in step.content)
+    assert hit["variable"] == "order_number"
+    assert "reaches SQL sink" in hit["evidence"]
     llm = FakeLLM([verdict(0.1)])
     answer = adjudicate(finding, render_block(evidence), llm=llm)
     assert answer.band == "false_positive" and answer.score < 0.3
@@ -181,7 +183,8 @@ def test_real_bandit_reports_integer_cast_and_manipulation_routes():
     assert any("def order_note()" in excerpt for excerpt in excerpts)
     number = next(result for result, excerpt in zip(findings, excerpts, strict=True)
                   if "def order_by_number()" in excerpt)
-    evidence = build_hard_evidence(normalize_bandit(number, TARGET), number.trace)
+    evidence = build_hard_evidence(normalize_bandit(number, TARGET), number.trace,
+                                   code=Path(number.path).read_text(encoding="utf-8"))
     assert any(hit["rule"] == "int-cast" for hit in evidence[2].payload["matched"])
 
 

@@ -90,17 +90,15 @@ def excerpt(code: str, line: int, *, python: bool = True) -> str:
                      for i in range(max(1, line - 3), min(len(lines), line + 5) + 1))
 
 
-def _clean_trace(trace: DataflowTrace | None, code: str) -> DataflowTrace | None:
+def _clean_trace(trace: DataflowTrace | None) -> DataflowTrace | None:
     if trace is None:
         return None
-    lines = strip_annotations(code).splitlines()
-
     def clean(step: TraceLine | None) -> TraceLine | None:
         if step is None:
             return None
-        if not 1 <= step.line <= len(lines):
-            raise ValueError("scanner trace line is outside its source file")
-        return TraceLine(step.line, lines[step.line - 1].strip())
+        # Strip labels without replacing an unconfirmed scanner claim with real code.
+        # Evidence Building must still detect a mismatched variable/source at this line.
+        return TraceLine(step.line, strip_annotations(step.content).strip())
 
     intermediates = [clean(step) for step in trace.intermediates]
     return DataflowTrace(clean(trace.source), [step for step in intermediates if step is not None],
@@ -252,7 +250,7 @@ def run_ablation(
             else:
                 clean = strip_annotations(code)
                 limits: list[dict[str, Any]] = []
-                items = build_hard_evidence(finding, _clean_trace(trace, code), code=clean,
+                items = build_hard_evidence(finding, _clean_trace(trace), code=clean,
                                            analysis_limits=limits)
                 sink_line = trace.sink.line if trace and trace.sink else finding.line
                 block = render_block(items, clean, sink_line=sink_line, analysis_limits=limits)

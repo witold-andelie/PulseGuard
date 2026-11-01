@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from pulseguard.scanners.semgrep import DataflowTrace, TraceLine
+from pulseguard.scanners.trace_check import source_access
 
 
 class BanditUnavailable(RuntimeError):
@@ -88,12 +89,14 @@ def _sql_context(code: str, line: int) -> DataflowTrace | None:
         return TraceLine(node.lineno, lines[node.lineno - 1].strip())
 
     # No source claim unless the slice actually contains a request expression.
-    source = next((node for node in selected if any(
-        isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
-        and n.value.id == "request" and n.attr in ("args", "form", "values", "json")
-        for n in ast.walk(node.value))), None)
+    source = next((node for node in selected if any(source_access(n)
+                   for n in ast.walk(node.value))), None)
+    # A multiline assignment can start above the actual request call. Locate the call,
+    # never an enclosing try/if header or a preceding snippet row.
+    source_call = (next((n for n in ast.walk(source.value) if source_access(n)), None)
+                   if source else None)
     return DataflowTrace(
-        source=location(source) if source else None,
+        source=location(source_call) if source_call else None,
         intermediates=[location(node) for node in selected if node is not source],
         sink=location(min(sinks, key=lambda node: node.lineno)),
     )

@@ -67,9 +67,10 @@ def test_sink_context_and_result_question(expression, context):
 
 def test_numeric_digit_regex_is_unsat_but_length_alone_admits_unquoted_injection():
     digits = solve(program(SQL_NUMERIC))
-    assert digits.needle == "[^0-9]" and digits.result == "unsat"
+    assert digits.needle == r"[^0-9\s]" and digits.result == "unsat"
     assert constraint_item(digits).text == (
-        "validator model: ^[0-9]{1,8}$ admits a non-digit (numeric sink)? unsat")
+        "validator model: ^[0-9]{1,8}$ admits a character other than digits and whitespace "
+        "(numeric sink)? unsat")
     bounded = solve(program(SQL_NUMERIC, '    if len(order_id) > 8:\n        return None\n'))
     assert bounded.result == "sat" and bounded.witness == "1 OR 1=1"
 
@@ -91,11 +92,11 @@ def test_execute_argument_and_query_alias_are_classified():
     assert solve(changed).context == "unknown"
 
 
-def test_numeric_unicode_digits_and_match_final_newline_are_not_ascii_proofs():
+def test_numeric_unicode_digits_are_unknown_but_final_newline_is_only_whitespace():
     unicode_digits = solve(program(SQL_NUMERIC).replace("[0-9]", r"\d"))
     assert not unicode_digits.claim
     newline = solve(program(SQL_NUMERIC).replace("re.fullmatch", "re.match"))
-    assert newline.result == "sat" and "\n" in newline.witness
+    assert newline.result == "unsat" and newline.witness is None
 
 
 def test_query_captured_before_guard_is_not_used_to_veto():

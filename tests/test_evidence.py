@@ -65,7 +65,8 @@ def test_parenthesized_module_docstring_excluded_from_window():
 def test_render_block_infers_sink_from_evidence():
     target = REPO_ROOT / "demo_target" / "order_api"
     result = FakeScanner().run(target)[0]
-    items = build_hard_evidence(normalize(result, root=target), result.trace)
+    items = build_hard_evidence(normalize(result, root=target), result.trace,
+                                code=(target / "routes.py").read_text(encoding="utf-8"))
     block = render_block(items, (target / "routes.py").read_text(encoding="utf-8"))
     assert f"{result.line}:     rows = conn.execute(q).fetchall()" in block
     assert "@vuln" not in block and "DELIBERATELY VULNERABLE" not in block
