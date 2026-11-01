@@ -12,17 +12,17 @@ Labelled sites: **67** (**33 vulnerable**, **34 safe**).
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | semgrep | completed | 23 | 15 | 10 | 19 | 0.6053 | 0.6970 | 0.6479 | 0.4412 | 0.3030 |
 | bandit | completed | 30 | 27 | 3 | 7 | 0.5263 | 0.9091 | 0.6667 | 0.7941 | 0.0909 |
-| llm | completed | 30 | 1 | 3 | 33 | 0.9677 | 0.9091 | 0.9375 | 0.0294 | 0.0909 |
-| neurosymbolic | completed | 30 | 3 | 3 | 31 | 0.9091 | 0.9091 | 0.9091 | 0.0882 | 0.0909 |
+| llm | completed | 30 | 0 | 3 | 34 | 1.0000 | 0.9091 | 0.9524 | 0.0000 | 0.0909 |
+| neurosymbolic | completed | 30 | 0 | 3 | 34 | 1.0000 | 0.9091 | 0.9524 | 0.0000 | 0.0909 |
 
 ## Coverage and run details
 
-Target: `demo_target`. Generated: 2026-11-01T11:07:02.689296+00:00.
+Target: `demo_target`. Generated: 2026-11-01T13:22:39.652274+00:00.
 
 - semgrep: 38 candidates; 0 model calls; 0 unusable replies.
 - bandit: 65 candidates; 0 model calls; 0 unusable replies.
 - llm: 75 candidates; 75 model calls; 0 unusable replies.
-- neurosymbolic: 103 candidates; 103 model calls; 0 unusable replies.
+- neurosymbolic: 103 candidates; 103 model calls; 9 unusable replies.
 - semgrep 1.183.0: 38 raw hits; 38 matched hits; 0 unlabelled/unmatched hits.
 - bandit 1.9.4: 65 raw hits; 57 matched hits; 8 unlabelled/unmatched hits.
 
@@ -70,13 +70,13 @@ Target: `demo_target`. Generated: 2026-11-01T11:07:02.689296+00:00.
 | --- | ---: | ---: | ---: | ---: |
 | dependency | 0 | 0 | 1 | 0 |
 | prompt-injection | 0 | 0 | 1 | 0 |
-| sqli | 30 | 1 | 1 | 33 |
+| sqli | 30 | 0 | 1 | 34 |
 
 ### llm: confusion counts by corpus
 
 | Corpus | TP | FP | FN | TN |
 | --- | ---: | ---: | ---: | ---: |
-| hard | 18 | 1 | 1 | 20 |
+| hard | 18 | 0 | 1 | 21 |
 | original | 12 | 0 | 2 | 13 |
 
 ### neurosymbolic: confusion counts by class
@@ -85,14 +85,14 @@ Target: `demo_target`. Generated: 2026-11-01T11:07:02.689296+00:00.
 | --- | ---: | ---: | ---: | ---: |
 | dependency | 0 | 0 | 1 | 0 |
 | prompt-injection | 0 | 0 | 1 | 0 |
-| sqli | 30 | 3 | 1 | 31 |
+| sqli | 30 | 0 | 1 | 34 |
 
 ### neurosymbolic: confusion counts by corpus
 
 | Corpus | TP | FP | FN | TN |
 | --- | ---: | ---: | ---: | ---: |
-| hard | 18 | 2 | 1 | 19 |
-| original | 12 | 1 | 2 | 12 |
+| hard | 18 | 0 | 1 | 21 |
+| original | 12 | 0 | 2 | 13 |
 
 Small, author-written set; these counts describe only this corpus. Do not generalise to production code or other vulnerability classes. Unlabelled scanner hits are audited separately, not counted as false positives.
 

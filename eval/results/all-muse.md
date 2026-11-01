@@ -17,7 +17,7 @@ Labelled sites: **67** (**33 vulnerable**, **34 safe**).
 
 ## Coverage and run details
 
-Target: `demo_target`. Generated: 2026-11-01T10:10:06.819638+00:00.
+Target: `demo_target`. Generated: 2026-11-01T12:09:04.190909+00:00.
 
 - semgrep: 38 candidates; 0 model calls; 0 unusable replies.
 - bandit: 65 candidates; 0 model calls; 0 unusable replies.
