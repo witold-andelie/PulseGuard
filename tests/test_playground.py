@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -761,7 +762,11 @@ def test_java_annotation_stripped_before_model(tmp_path):
     assert "@vuln" not in llm.calls[0]["user"]
 
 
-def test_shim_without_lang_package_treats_cobol_as_llm_only(tmp_path):
+def test_shim_without_lang_package_treats_cobol_as_llm_only(tmp_path, monkeypatch):
+    # Simulate an install without the language package; the shim must still be safe.
+    import pulseguard
+    monkeypatch.setitem(sys.modules, "pulseguard.lang", None)
+    monkeypatch.delattr(pulseguard, "lang", raising=False)
     llm = FakeLLM([verdict(0.95)])
     client = _client(tmp_path, clients={"muse": llm})
     response = _analyze(client, COBOL, language="cobol")
@@ -772,5 +777,16 @@ def test_shim_without_lang_package_treats_cobol_as_llm_only(tmp_path):
     assert row["evidence"] == []
     assert any("lang" in (limit["reason"] or "").lower() or "llm_only" in (limit["reason"] or "")
                for limit in row["analysis_limits"])
+    assert "confirmed" not in row["decision"].lower()
+    assert ADVISORY_DECISION in row["decision"].lower()
+
+
+def test_real_language_backend_keeps_cobol_advisory(tmp_path):
+    llm = FakeLLM([verdict(0.95)])
+    client = _client(tmp_path, clients={"muse": llm})
+    body = _analyze(client, COBOL, language="cobol").json()
+    assert body["tier"] == "llm_only"
+    row = body["results"][0]
+    assert row["evidence"] == [] and row["analysis_limits"]
     assert "confirmed" not in row["decision"].lower()
     assert ADVISORY_DECISION in row["decision"].lower()
