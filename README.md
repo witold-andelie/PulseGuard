@@ -262,9 +262,9 @@ model score.
 | **Grammar-level analysis — partial coverage** | Java, JavaScript, TypeScript, Go, C#, C, C++, SQL | Tree-sitter excerpt of the enclosing function plus one-hop referenced definitions; Semgrep SQL-injection taint where rules exist (SQL itself has none). E1/E2 only when the source call is confirmed on that exact line. Sanitizer recognition and z3 are **not** available; the decision states that partial coverage. For C and C++ the decision also states that memory-safety classes (buffer overflow, format string) are not analysed yet. Hard evidence exists, coverage is incomplete. |
 | **LLM-only — advisory, no hard evidence** | COBOL, SAS, PL/SQL, unknown, or a grammar language whose parse fails | No E-items. One analysis limit explains why. The adjudicator still runs on the excerpt. The decision is labelled “advisory only — no hard evidence; would not reach remediation” and never reads as a confirmation, even when the score is high. |
 
-Until `pulseguard.lang` is merged, the Playground uses an in-tree shim: Python stays on
-the full path; every other language is treated as llm_only with a limit that says the
-language backend is absent.
+If the `pulseguard.lang` backend cannot be imported, the Playground falls back to an
+in-tree shim: Python stays on the full path; every other language is treated as llm_only
+with a limit that says the language backend is absent.
 
 **What it never does.** It does not import, `exec`, `eval`, compile-to-run, sandbox,
 pytest, patch, remediate or store the snippet, in any language. A temp file exists solely
@@ -276,7 +276,7 @@ to `replay/` or the case store. Every response is labelled
 **Limits.** UTF-8 text, ≤ 6 KB, ≤ 200 lines. `# @vuln` / `# @safe` / `// @vuln`
 annotations are stripped before any model sees the text. Guard runs first; a flagged
 snippet is quarantined and never reaches a model. Per client IP (first `X-Forwarded-For`
-hop from Render's proxy): 5 analyses/minute, 40/day, one concurrent analysis. Global
+hop from the platform proxy): 5 analyses/minute, 40/day, one concurrent analysis. Global
 daily model-call budget `PG_PLAYGROUND_DAILY_CALLS` (default 300). In-memory counters
 reset when the process restarts. HTTP 429 includes `Retry-After`. When keys are absent
 or the budget is exhausted, the Playground degrades to static analysis and says so.
@@ -297,8 +297,80 @@ the exception type and status only.
 | `PG_PLAYGROUND_TIMEOUT_S` | Overall analysis deadline in seconds (default 90) |
 
 Set the `PG_PLAYGROUND_MUSE_*` and `PG_PLAYGROUND_NEMOTRON_*` values in the Render
-dashboard (`sync: false` in `render.yaml`). The Playground works in both REPLAY and
+dashboard (`sync: false` in `render.yaml`); on Cloud Run they come from `deploy.sh` and
+Secret Manager. The Playground works in both REPLAY and
 LIVE serving modes.
+
+## Lessons from two models: Muse Spark and Nemotron
+
+Both models go through the same OpenAI-compatible client and receive **the same prompts**;
+there is no per-model prompt logic. **Meta Muse Spark 1.3** (via opencode) is the primary.
+**NVIDIA Nemotron 3 Ultra** (NVIDIA NIM free tier, thinking on) is the control. On this task
+Nemotron was the less robust of the two: it was misled by every defect in our own evidence,
+while Muse Spark was misled by none, and only Nemotron hit rate limits. Numbers come from
+the committed ablation in [`eval/results/`](eval/results/README.md) (67 author-written sites;
+report counts, do not generalise).
+
+### Integration lessons
+
+| | Muse Spark (opencode Go) | Nemotron 3 Ultra (NVIDIA NIM) |
+| --- | --- | --- |
+| Required quirk | `x-opencode-session` header on every request; without it HTTP 400 | none for chat; thinking needs `PG_MODEL_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":true}}` |
+| Structured output | JSON Schema works (`STRUCTURED=auto`) | the endpoint rejected `uniqueItems`, and schema-constrained long patch strings degenerated → `STRUCTURED=off`, plain JSON plus the tolerant parser |
+| Latency | up to ~35 s, 1,100–1,700 reasoning tokens | up to ~50 s |
+| Reliability (round 3) | no failed calls in any round | 9 of 103 calls failed (7 rate limits, 2 server errors) |
+
+General rules that came out of it: `STRUCTURED=auto` turns schema output off for a client after
+one capability error (HTTP 400/404/422) and retries once with plain JSON; `reasoning_content` is
+ignored; retries are bounded; there is **no automatic switch to another provider**, so every
+verdict names the model that actually produced it.
+
+### What the weaker model showed us
+
+Nemotron did not fail at random. Each of its neuro-symbolic false positives traced to a hard
+evidence item **we** had built wrongly: E3 claiming "no allow-list" when the builder merely did
+not recognise one; a `float()` cast around the source that was not recognised; a z3 question
+that counted a trailing newline as a bypass; a Bandit-derived trace that named `try:` as the
+source. Muse Spark looked past these errors; Nemotron believed them. A less capable model turned
+out to be a good **test instrument for evidence quality**: it follows what it is told.
+
+### What we do when the model is not strong enough
+
+1. **Fix the evidence, not the prompt.** Every hard-evidence fact is now confirmed against the
+   code line by line; whatever cannot be confirmed becomes an analysis limit (`L`-id), which a
+   verdict cannot cite. Nemotron's neuro-symbolic row went 0.89 F1 / 1 FP (round 1) → 0.91 / 3 FP
+   on the larger corpus (round 2) → **0.95 / 0 FP** (round 3), level with Muse Spark, with the
+   same prompts throughout.
+2. **Never state absence; state what was checked.** "No allow-list" became "none recognised",
+   plus a limit listing what the builder looked for. A weak model reads a confident absence as a
+   fact.
+3. **Hand over the context instead of expecting inference.** The excerpt includes the sink
+   function plus one-hop referenced definitions (helpers, allow-lists, Enums), so the model
+   does not have to guess what a name does. Two-hop helpers remain a known miss.
+4. **Remove ambiguity from the input.** In the Playground an injectable COBOL program scored
+   0.0 because the excerpt was numbered twice (`1: 1:`) and an empty evidence section read as
+   "no taint". The block is now numbered once and says that empty evidence is not evidence of
+   safety. Real Muse Spark then scored it 0.9, still labelled advisory.
+5. **Take away decisions a model does not need to make.** In the first recording the model
+   dismissed a real Trivy dependency finding as a false positive. Dependency CVEs now go
+   through a deterministic verifier (`model=none`) that matches manifest, package and version.
+6. **Treat model output as a proposal behind gates.** Citations must name existing E-ids; the
+   z3 veto, skeptic, counterfactual, PoC witness and tiered approval apply regardless of
+   model. A weaker model can lower recall, but it cannot push an unsupported finding into
+   remediation.
+7. **Failure means `uncertain`, never "safe" or "confirmed".** A failed or timed-out call, an
+   unparseable answer or an out-of-range score (never clamped) becomes `uncertain` and goes to
+   human review. Failed calls are reported in the metrics, not hidden (see the asterisk in
+   the ablation table).
+8. **Tolerant transport, strict contracts.** Structured output can be off and the parser is
+   forgiving, but local contracts still enforce score bounds, unique citations and patch
+   validity.
+9. **Measure each model on its own with the same ablation.** The neuro-symbolic row should
+   never be worse than LLM-only. When it was worse, the cause was a defect in our evidence,
+   not something to tune away per model.
+10. **Budget the weak link.** The Playground has per-IP limits and a global daily call budget.
+    Compare mode calls both models concurrently. Without keys or budget it degrades to
+    static analysis and says so.
 
 ## How to record
 
@@ -334,12 +406,87 @@ becomes the default REPLAY, with event-derived CSV/KPIs and simulated decisions/
 `--run-id` selects a run name; `--root` selects another replay directory. Scripted test runs
 stay in temporary directories; the recorder never substitutes fake model responses.
 
-## Scanning and deployment
+## Deployment: Google Cloud Run with Render fallback
 
-The optional [Cloud Run + Render deployment](docs/DEPLOYMENT.md) keeps Render available
-and prefers Google Cloud through the GitHub Pages front door:
-<https://witold-andelie.github.io/PulseGuard/> (placeholder until Pages is enabled).
-The deployment scripts are opt-in; no cloud resources are created by CI verification.
+Live since **1 November 2026**. Share the front door; it opens whichever deployment is healthy.
+
+| Entry | URL | Role |
+| --- | --- | --- |
+| **Front door** (GitHub Pages) | <https://witold-andelie.github.io/PulseGuard/> | the link to share; prefers Cloud Run, else Render |
+| Google Cloud Run | <https://pulseguard-qp75sdlelq-ey.a.run.app> | preferred while the Google Cloud free trial lasts |
+| Render | <https://pulseguard-dufi.onrender.com> | always deployed; the permanent fallback |
+
+Both serve REPLAY by default plus the public Playground. On the first day the Playground's C
+example took about 10 s on Cloud Run (2 vCPU) and about 60 s on Render's free instance.
+
+**Routing.** The front door reads `endpoints.json` and probes Cloud Run `/health` with an 8 s
+deadline (min instances is 0, so a cold start must fit). HTTP 200 redirects to Cloud Run;
+anything else, or no Cloud Run URL, redirects to Render. Without JavaScript it shows both links.
+A "Stay on this page" button stops the redirect. On Cloud Run a small launch adapter
+(`deploy/gcp/health_cors.py`) adds CORS for `GET /health` from the Pages origin only; the
+application is unchanged. A tab already open on Cloud Run does not move to Render by itself;
+it has to come back through the front door.
+
+**How a commit reaches Google Cloud.** Push to `main` → CI → `deploy-gcp.yml` (runs on CI success
+for push events, at the exact tested SHA) → GitHub OIDC through Workload Identity Federation
+(no service-account key exists) → `docker buildx` to Artifact Registry → `gcloud run deploy` by
+**immutable digest** → smoke test of `/health` and `/api/mode` → endpoint artifact →
+`pages.yml` republishes the front door. `health.yml` probes both deployments daily (07:15 UTC)
+and fails only when **both** are down. Render keeps its own deploy path and is not touched.
+
+**Cloud Run settings.** europe-west3 (Frankfurt, same as Render), min 0 / max 2 instances,
+2 vCPU, 2 GiB, concurrency 20, 300 s timeout, CPU throttling, `PG_MODE=replay`,
+`PG_DB_PATH=/tmp/pulseguard.sqlite`, the same `PG_PLAYGROUND_*` endpoint values as Render,
+`PG_PLAYGROUND_DAILY_CALLS=1000`. The two model keys come from Secret Manager
+(`--set-secrets`); they are never in the repository, the image or the workflow.
+
+**Identities (least privilege).**
+
+| Service account | Can do only |
+| --- | --- |
+| `pulseguard-run` | runtime identity; read the two Playground key secrets |
+| `pulseguard-deployer` | `run.admin` on the one service, write to the one registry, act as `pulseguard-run`; usable only from this repository's `refs/heads/main` through WIF |
+| `pulseguard-budget-guard` | `billing.projectManager` on this project (to unlink billing) |
+| `pulseguard-budget-trigger` / `pulseguard-function-build` | deliver budget events to the guard / build that function |
+
+**Cost guardrails.** The trial billing account is in **EUR**, and Google requires budgets in
+the account currency, so the budget is **€255 (≈ USD 300)**, cumulative from 1 November 2026
+with no monthly reset. Credits are excluded, so it measures gross consumption while the trial
+credit pays. Alerts at 50 %, 90 % and 100 % go to Pub/Sub. At 100 % of **actual** spend the
+`pulseguard-budget-guard` function disables billing on the project (forecasts are ignored; the
+target project comes from its own configuration, never from the message). Budget
+notifications can lag, so the hard no-charge boundary is the **unupgraded** free trial itself.
+Do not upgrade it, and do not rerun `bootstrap.sh --yes` after a shutdown: that relinks billing.
+
+**When the trial ends (day 90) or the credit is used up.** Nothing has to be done by hand:
+
+| Component | Behaviour |
+| --- | --- |
+| Cloud Run | stopped by Google (or by the kill-switch) |
+| Front door | probe fails → visitors go to Render |
+| `deploy-gcp.yml` | authentication, availability or billing errors become a notice and the job skips; CI stays green |
+| `health.yml` | reports Cloud Run "Down", stays green while Render is healthy |
+| Render + GitHub CI | unchanged, as before Google Cloud existed |
+
+**Reproducing it** (full steps, rollback and removal in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)):
+`bash deploy/gcp/bootstrap.sh` prints the plan (dry run, no remote calls);
+`--yes` applies it with `PROJECT_ID`, `BILLING_ACCOUNT`, and `GCP_BUDGET_CURRENCY` /
+`GCP_BUDGET_UNITS` matching the billing account. It uses a dedicated gcloud configuration
+`pulseguard-gcp` and never changes the default one. Then the owner adds the two key values
+through a hidden prompt (`read -s`, piped to `gcloud secrets versions add --data-file=-`),
+sets the five `GCP_*` repository variables, enables **Settings → Pages → Source: GitHub Actions**,
+and dispatches `deploy-gcp.yml` once.
+
+**Problems met on the first deployment, and the fixes**
+
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| Bootstrap refused the billing account | the new trial account is EUR; the script assumed USD | `GCP_BUDGET_CURRENCY` / `GCP_BUDGET_UNITS`; the kill-switch matches the configured currency |
+| `PERMISSION_DENIED` creating Artifact Registry as project Owner | IAM had not yet propagated in the brand-new project | rerun; every step is idempotent (describe before create) |
+| Budget step failed on Windows | `python3` resolved to the Microsoft Store alias | put a real `python3` first on `PATH` (or run from Linux/Cloud Shell) |
+| First workflow red although the service was live | curl rejects `--output=/dev/null`; it needs separate words | fixed, with a regression test |
+
+## Scanning and deployment
 
 The scan extra installs Semgrep **1.183.0**, its compatible FastAPI version and Bandit.
 Bandit runs as a pure-Python subprocess. Real Semgrep tests carry `@pytest.mark.semgrep`
@@ -378,7 +525,7 @@ after an int-cast sanitizer. `SemgrepRunner` combines JSON sink locations with t
 
 The main Dockerfile uses python:3.12-slim, a non-root user, Semgrep and PORT.
 Render configuration follows framework section 11.1. CI runs Ruff, pytest, contract validation
-and replay verification. S1 is live on Render; this S2 increment has not been deployed.
+and replay verification. The current `main` is live on Render and Cloud Run (see the deployment section above).
 The deliberately vulnerable Flask service uses a throwaway SQLite fixture in its tests.
 
 ## Stretch: z3 constraint solving (ST-1)
