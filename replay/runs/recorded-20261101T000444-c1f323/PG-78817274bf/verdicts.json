@@ -1,0 +1,81 @@
+{
+  "verdicts": [
+    {
+      "is_exploitable": true,
+      "score": 0.95,
+      "band": "confirmed",
+      "cited_evidence": [
+        "E2",
+        "E1",
+        "E4",
+        "E3"
+      ],
+      "step1_dataflow": "Taint from request.args.get flows into q and reaches conn.execute.",
+      "step2_constraint": "No sanitizer, cast, or bound was applied on the path.",
+      "step3_context": "The /order route is internet-facing via api-gateway.",
+      "step4_verdict": "Unsanitized user input in SQL is exploitable.",
+      "role": "adjudicator",
+      "model": "muse-spark-1.3-contributor",
+      "case_id": "PG-78817274bf"
+    },
+    {
+      "is_exploitable": false,
+      "score": 0.0,
+      "band": "false_positive",
+      "cited_evidence": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "step1_dataflow": "Source order_id reaches conn.execute only as bound parameter, not as part of query string q.",
+      "step2_constraint": "Query uses ? placeholder with (order_id,) tuple so value is parameterized and never concatenated.",
+      "step3_context": "/order is internet-facing via api-gateway so exposure would be high if injection existed.",
+      "step4_verdict": "Parameterized execution prevents injection so the finding is not exploitable.",
+      "role": "counterfactual",
+      "model": "muse-spark-1.3-contributor",
+      "case_id": "PG-78817274bf"
+    }
+  ],
+  "model_metadata": {
+    "model": "muse-spark-1.3-contributor",
+    "base_url_host": "opencode.ai",
+    "structured_mode": "auto",
+    "structured_output": true,
+    "session_header_sent": true,
+    "latency_ms": 9630.168,
+    "usage": {
+      "completion_tokens": 1347,
+      "prompt_tokens": 1006,
+      "total_tokens": 2353,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 1222,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cache_write_tokens": null,
+        "cached_tokens": 0,
+        "image_tokens": null,
+        "text_tokens": null
+      },
+      "cost": 0,
+      "opencode": {
+        "billing_source": "go",
+        "list_cost": 0.00037,
+        "allowance": 0.00037,
+        "tokens": {
+          "input": 1006,
+          "output": 1347,
+          "reasoning": 1222,
+          "cache_read": 0,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        }
+      }
+    }
+  }
+}

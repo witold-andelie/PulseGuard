@@ -1,0 +1,33 @@
+{
+  "case_id": "PG-d8c671afbb",
+  "fingerprint": "d8c671afbb2bf446cfa6a99ebaaa36394301f35099f9c74a009df60bc238d940",
+  "rule_id": "CVE-2026-25645",
+  "scanner": "trivy",
+  "severity": "medium",
+  "message": "requests 2.31.0: 3 CVEs, fixed in 2.33.0",
+  "file": "requirements.txt",
+  "line": 0,
+  "state": "remediated",
+  "evidence_ids": [
+    "E1",
+    "E2",
+    "E3"
+  ],
+  "trace": [],
+  "cve_id": "CVE-2026-25645",
+  "extra": {
+    "kind": "dependency",
+    "package": "requests",
+    "installed_version": "2.31.0",
+    "fixed_version": "2.33.0",
+    "cve_id": "CVE-2026-25645",
+    "manifest": "requirements.txt",
+    "report": "scan/trivy-report.json",
+    "recorded": true,
+    "cve_ids": [
+      "CVE-2024-35195",
+      "CVE-2024-47081",
+      "CVE-2026-25645"
+    ]
+  }
+}

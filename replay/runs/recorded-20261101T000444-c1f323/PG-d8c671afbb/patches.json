@@ -1,0 +1,31 @@
+[
+  {
+    "patch_id": "P-PG-d8c671afbb-1",
+    "case_id": "PG-d8c671afbb",
+    "attempt": 1,
+    "state": "applied",
+    "patchset": {
+      "case_id": "PG-d8c671afbb",
+      "ops": [
+        {
+          "path": "requirements.txt",
+          "old": "requests==2.31.0\n",
+          "new": "requests==2.33.0"
+        }
+      ],
+      "rationale": "Bump requests 2.31.0 → 2.33.0 (deterministic; no model call).",
+      "attempt": 1,
+      "state": "applied"
+    },
+    "sandbox_report": {
+      "passed": true,
+      "rescan_before": 1,
+      "rescan_after": 0,
+      "pytest_ok": true,
+      "pytest_tail": "...                                                                      [100%]\n3 passed in 0.17s\n",
+      "diff": "--- a/requirements.txt\n+++ b/requirements.txt\n@@ -2,4 +2,4 @@\n pytest>=8\n # @vuln dependency: CVE-2024-35195, fixed in requests 2.32.0 (scan-only demo pin).\n # This manifest is scanner input; do not install it into the PulseGuard/test environment.\n-requests==2.31.0\n+requests==2.33.0",
+      "errors": [],
+      "feedback": ""
+    }
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "case_id": "PG-01321a0793",
+  "fingerprint": "01321a0793ba2b58f2d7011bdba5f3091baa492edccec61f637511f54d8bf7dd",
+  "rule_id": "B608",
+  "scanner": "bandit",
+  "severity": "medium",
+  "message": "Possible SQL injection vector through string-based query construction.",
+  "file": "order_note.py",
+  "line": 21,
+  "state": "quarantined",
+  "evidence_ids": [],
+  "trace": [
+    {
+      "kind": "intermediate",
+      "line": 21,
+      "content": "note_query = \"SELECT id, item, qty FROM orders WHERE item LIKE ? ORDER BY \" + \"id\""
+    },
+    {
+      "kind": "sink",
+      "line": 23,
+      "content": "rows = conn.execute(note_query, (\"%\" + note + \"%\",)).fetchall()  # @safe sqli"
+    }
+  ],
+  "extra": {
+    "test_id": "B608",
+    "confidence": "LOW",
+    "severity": "MEDIUM"
+  }
+}

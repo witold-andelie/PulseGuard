@@ -1,0 +1,2 @@
+{"seq": 10, "case_id": "PG-01321a0793", "activity": "FINDING_INGESTED", "ts": "2026-11-01T00:06:00.898798+00:00", "resource": "guard", "attributes": {"run_mode": "LIVE", "rule_id": "B608"}}
+{"seq": 11, "case_id": "PG-01321a0793", "activity": "FINDING_QUARANTINED", "ts": "2026-11-01T00:06:00.899798+00:00", "resource": "guard", "attributes": {"run_mode": "LIVE", "patterns": ["ai_reviewer_address", "assert_false_positive", "mark_false_positive", "skip_approval"], "note": "suspected manipulation"}}

@@ -1,0 +1,22 @@
+{
+  "verdicts": [
+    {
+      "is_exploitable": true,
+      "score": 1.0,
+      "band": "confirmed",
+      "cited_evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "step1_dataflow": "Dependency requests==2.31.0; ['CVE-2024-35195', 'CVE-2024-47081', 'CVE-2026-25645'] present in RECORDED Trivy report.",
+      "step2_constraint": "Highest recorded fixed version: 2.33.0.",
+      "step3_context": "Report scan/trivy-report.json; label RECORDED, Trivy 0.76.1, scanned at 2026-10-31T21:44:44.2259288+01:00.",
+      "step4_verdict": "Recorded CVEs and fixed version confirmed; deterministic manifest bump.",
+      "role": "verifier",
+      "model": "none",
+      "case_id": "PG-d8c671afbb"
+    }
+  ],
+  "model_metadata": {}
+}

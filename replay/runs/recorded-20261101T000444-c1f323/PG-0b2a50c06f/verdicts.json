@@ -1,0 +1,63 @@
+{
+  "verdicts": [
+    {
+      "is_exploitable": false,
+      "score": 0.0,
+      "band": "false_positive",
+      "cited_evidence": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "step1_dataflow": "Taint from request.args.get flows through order_number into conn.execute per E2.",
+      "step2_constraint": "Checked int-cast at L45 sanitizes the value by rejecting non-integers with 400 per E3.",
+      "step3_context": "The /order_by_number endpoint is reachable from the internet via api-gateway per E4.",
+      "step4_verdict": "The checked cast neutralizes SQL injection so the B608 finding is not exploitable.",
+      "role": "adjudicator",
+      "model": "muse-spark-1.3-contributor",
+      "case_id": "PG-0b2a50c06f"
+    }
+  ],
+  "model_metadata": {
+    "model": "muse-spark-1.3-contributor",
+    "base_url_host": "opencode.ai",
+    "structured_mode": "auto",
+    "structured_output": true,
+    "session_header_sent": true,
+    "latency_ms": 10797.558,
+    "usage": {
+      "completion_tokens": 1799,
+      "prompt_tokens": 1050,
+      "total_tokens": 2849,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 1664,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cache_write_tokens": null,
+        "cached_tokens": 0,
+        "image_tokens": null,
+        "text_tokens": null
+      },
+      "cost": 0,
+      "opencode": {
+        "billing_source": "go",
+        "list_cost": 0.0004648,
+        "allowance": 0.0004648,
+        "tokens": {
+          "input": 1050,
+          "output": 1799,
+          "reasoning": 1664,
+          "cache_read": 0,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        }
+      }
+    }
+  }
+}

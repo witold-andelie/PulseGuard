@@ -3,6 +3,7 @@
 import asyncio
 import csv
 import io
+import json
 import re
 import shutil
 from argparse import Namespace
@@ -336,8 +337,11 @@ def test_export_escalation_with_skeptic_limits_and_veto(tmp_path, sample_finding
         assert detail["bundle"] is None
 
 
+LEGACY_RUNS = ("recorded-20261031T012001-4192c0", "s1-placeholder")
+
+
 def test_existing_s1_and_placeholder_still_load(tmp_path):
-    for run_id in RunStore(replay_dir()).list_runs():
+    for run_id in [run for run in RunStore(replay_dir()).list_runs() if run in LEGACY_RUNS]:
         root = tmp_path / run_id / "replay"
         shutil.copytree(replay_dir() / "runs" / run_id, root / "runs" / run_id)
         write_manifest(root)
@@ -351,3 +355,39 @@ def test_existing_s1_and_placeholder_still_load(tmp_path):
             for key in ("poc", "verification", "blast_radius", "z3_veto"):
                 assert detail[key] is None
             assert detail["rollback"] is None
+
+
+MUSE_RUN = "recorded-20261101T000444-c1f323"
+
+
+def test_committed_muse_recording_shows_the_four_scenarios(tmp_path):
+    """Pins the real Meta Muse Spark recording served on Render (framework section 13)."""
+    with TestClient(create_app(mode="replay", db_path=tmp_path / "muse.sqlite")) as client:
+        mode = client.get("/api/mode").json()
+        assert (mode["run_id"], mode["recorded"]) == (MUSE_RUN, True)
+        assert mode["model"] == "muse-spark-1.3-contributor"
+        cases = {case["case_id"]: case for case in client.get("/api/cases").json()["cases"]}
+        details = {cid: client.get("/api/cases/" + cid).json() for cid in cases}
+
+    by_rule = {detail["case"]["rule_id"]: detail for detail in details.values()}
+    assert len(cases) == 4
+
+    sqli = by_rule["flask-sqli-taint"]  # scenarios 1 and 5
+    assert sqli["case"]["state"] == "remediated" and sqli["priority"] == "P0"
+    assert sqli["verification"]["ok"] is True
+    assert sqli["poc"]["status"] == "witnessed"
+    assert sqli["blast_radius"]["source"] == "extracted"
+    assert sqli["approvals"][-1]["actor"] == "security-engineer (recording)"
+
+    # scenario 2
+    dependency = next(d for d in details.values() if d["case"]["finding"]["scanner"] == "trivy")
+    verdict = dependency["verdicts"][0]
+    assert (verdict["role"], verdict["model"], verdict["band"]) == ("verifier", "none", "confirmed")
+    assert dependency["case"]["state"] == "remediated"
+    assert dependency["approvals"][-1]["actor"] == "policy:auto"
+    assert "requests==2.33.0" in json.dumps(dependency["bundle"])
+
+    states = sorted(d["case"]["state"] for d in details.values())
+    assert states == ["false_positive", "quarantined", "remediated", "remediated"]  # scenarios 3, 4
+    quarantined = next(d for d in details.values() if d["case"]["state"] == "quarantined")
+    assert not quarantined["verdicts"]  # the guard stopped it before any model call

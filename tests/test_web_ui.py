@@ -197,8 +197,9 @@ def test_static_files_and_recorded_case(tmp_path):
         assert client.get("/app.js").status_code == 200
         assert client.get("/style.css").status_code == 200
         cases = client.get("/api/cases").json()["cases"]
-        assert len(cases) == 1
-        detail = client.get("/api/cases/" + cases[0]["case_id"]).json()
+        sqli = next(case for case in cases if case["rule_id"] == "flask-sqli-taint")
+        cases = [sqli]
+        detail = client.get("/api/cases/" + sqli["case_id"]).json()
         assert detail["case"]["rule_id"] == "flask-sqli-taint"
         assert detail["verdicts"]
         assert detail["analysis_limits"] == []

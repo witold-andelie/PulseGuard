@@ -1,0 +1,92 @@
+{
+  "case_id": "PG-d8c671afbb",
+  "files": [
+    "requirements.txt"
+  ],
+  "patch": "--- a/requirements.txt\n+++ b/requirements.txt\n@@ -2,4 +2,4 @@\n pytest>=8\n # @vuln dependency: CVE-2024-35195, fixed in requests 2.32.0 (scan-only demo pin).\n # This manifest is scanner input; do not install it into the PulseGuard/test environment.\n-requests==2.31.0\n+requests==2.33.0",
+  "pr_title": "[PulseGuard] Fix CVE-2026-25645 in requirements.txt",
+  "pr_description": "## [PulseGuard] Fix CVE-2026-25645 in requirements.txt\n\nCase `PG-d8c671afbb` · run mode **LIVE**\n\n**Rationale:** Bump requests 2.31.0 → 2.33.0 (deterministic; no model call).\n\n- Adjudicator score: 1.0\n- Cited evidence: E1, E2, E3\n- Sandbox: passed\n- Approval: approve by policy:auto\n\n### Finding\n{\n  \"case_id\": \"PG-d8c671afbb\",\n  \"fingerprint\": \"d8c671afbb2bf446cfa6a99ebaaa36394301f35099f9c74a009df60bc238d940\",\n  \"rule_id\": \"CVE-2026-25645\",\n  \"scanner\": \"trivy\",\n  \"severity\": \"medium\",\n  \"message\": \"requests 2.31.0: 3 CVEs, fixed in 2.33.0\",\n  \"file\": \"requirements.txt\",\n  \"line\": 0,\n  \"state\": \"confirmed\",\n  \"evidence_ids\": [\n    \"E1\",\n    \"E2\",\n    \"E3\"\n  ],\n  \"trace\": [],\n  \"cve_id\": \"CVE-2026-25645\",\n  \"extra\": {\n    \"kind\": \"dependency\",\n    \"package\": \"requests\",\n    \"installed_version\": \"2.31.0\",\n    \"fixed_version\": \"2.33.0\",\n    \"cve_id\": \"CVE-2026-25645\",\n    \"manifest\": \"requirements.txt\",\n    \"report\": \"scan/trivy-report.json\",\n    \"recorded\": true,\n    \"cve_ids\": [\n      \"CVE-2024-35195\",\n      \"CVE-2024-47081\",\n      \"CVE-2026-25645\"\n    ]\n  }\n}\n\n### Verdict\n{\n  \"is_exploitable\": true,\n  \"score\": 1.0,\n  \"band\": \"confirmed\",\n  \"cited_evidence\": [\n    \"E1\",\n    \"E2\",\n    \"E3\"\n  ],\n  \"step1_dataflow\": \"Dependency requests==2.31.0; ['CVE-2024-35195', 'CVE-2024-47081', 'CVE-2026-25645'] present in RECORDED Trivy report.\",\n  \"step2_constraint\": \"Highest recorded fixed version: 2.33.0.\",\n  \"step3_context\": \"Report scan/trivy-report.json; label RECORDED, Trivy 0.76.1, scanned at 2026-10-31T21:44:44.2259288+01:00.\",\n  \"step4_verdict\": \"Recorded CVEs and fixed version confirmed; deterministic manifest bump.\",\n  \"role\": \"verifier\",\n  \"model\": \"none\",\n  \"case_id\": \"PG-d8c671afbb\"\n}\n\n### Sandbox report\n{\n  \"passed\": true,\n  \"rescan_before\": 1,\n  \"rescan_after\": 0,\n  \"pytest_ok\": true,\n  \"pytest_tail\": \"...                                                                      [100%]\\n3 passed in 0.17s\\n\",\n  \"diff\": \"--- a/requirements.txt\\n+++ b/requirements.txt\\n@@ -2,4 +2,4 @@\\n pytest>=8\\n # @vuln dependency: CVE-2024-35195, fixed in requests 2.32.0 (scan-only demo pin).\\n # This manifest is scanner input; do not install it into the PulseGuard/test environment.\\n-requests==2.31.0\\n+requests==2.33.0\",\n  \"errors\": [],\n  \"feedback\": \"\"\n}",
+  "output_dir": "bundle",
+  "finding": {
+    "case_id": "PG-d8c671afbb",
+    "fingerprint": "d8c671afbb2bf446cfa6a99ebaaa36394301f35099f9c74a009df60bc238d940",
+    "rule_id": "CVE-2026-25645",
+    "scanner": "trivy",
+    "severity": "medium",
+    "message": "requests 2.31.0: 3 CVEs, fixed in 2.33.0",
+    "file": "requirements.txt",
+    "line": 0,
+    "state": "confirmed",
+    "evidence_ids": [
+      "E1",
+      "E2",
+      "E3"
+    ],
+    "trace": [],
+    "cve_id": "CVE-2026-25645",
+    "extra": {
+      "kind": "dependency",
+      "package": "requests",
+      "installed_version": "2.31.0",
+      "fixed_version": "2.33.0",
+      "cve_id": "CVE-2026-25645",
+      "manifest": "requirements.txt",
+      "report": "scan/trivy-report.json",
+      "recorded": true,
+      "cve_ids": [
+        "CVE-2024-35195",
+        "CVE-2024-47081",
+        "CVE-2026-25645"
+      ]
+    }
+  },
+  "verdict": {
+    "is_exploitable": true,
+    "score": 1.0,
+    "band": "confirmed",
+    "cited_evidence": [
+      "E1",
+      "E2",
+      "E3"
+    ],
+    "step1_dataflow": "Dependency requests==2.31.0; ['CVE-2024-35195', 'CVE-2024-47081', 'CVE-2026-25645'] present in RECORDED Trivy report.",
+    "step2_constraint": "Highest recorded fixed version: 2.33.0.",
+    "step3_context": "Report scan/trivy-report.json; label RECORDED, Trivy 0.76.1, scanned at 2026-10-31T21:44:44.2259288+01:00.",
+    "step4_verdict": "Recorded CVEs and fixed version confirmed; deterministic manifest bump.",
+    "role": "verifier",
+    "model": "none",
+    "case_id": "PG-d8c671afbb"
+  },
+  "sandbox_report": {
+    "passed": true,
+    "rescan_before": 1,
+    "rescan_after": 0,
+    "pytest_ok": true,
+    "pytest_tail": "...                                                                      [100%]\n3 passed in 0.17s\n",
+    "diff": "--- a/requirements.txt\n+++ b/requirements.txt\n@@ -2,4 +2,4 @@\n pytest>=8\n # @vuln dependency: CVE-2024-35195, fixed in requests 2.32.0 (scan-only demo pin).\n # This manifest is scanner input; do not install it into the PulseGuard/test environment.\n-requests==2.31.0\n+requests==2.33.0",
+    "errors": [],
+    "feedback": ""
+  },
+  "approval": {
+    "case_id": "PG-d8c671afbb",
+    "decision": "approve",
+    "actor": "policy:auto",
+    "policy_tier": "auto",
+    "simulated": false,
+    "comment": "",
+    "created_at": "2026-11-01T00:06:12.417462+00:00"
+  },
+  "patchset": {
+    "case_id": "PG-d8c671afbb",
+    "ops": [
+      {
+        "path": "requirements.txt",
+        "old": "requests==2.31.0\n",
+        "new": "requests==2.33.0"
+      }
+    ],
+    "rationale": "Bump requests 2.31.0 → 2.33.0 (deterministic; no model call).",
+    "attempt": 1,
+    "state": "approved"
+  }
+}

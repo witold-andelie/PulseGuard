@@ -1,0 +1,40 @@
+{
+  "case_id": "PG-78817274bf",
+  "fingerprint": "78817274bf32e8e10f9c4018eb830fe0063a0269b166c7669aa166b1e029999e",
+  "rule_id": "flask-sqli-taint",
+  "scanner": "semgrep",
+  "severity": "high",
+  "message": "Untrusted input from flask.request.args reaches the SQL text of conn.execute() without sanitisation (possible SQL injection, CWE-89). Use a parameterised query.",
+  "file": "routes.py",
+  "line": 37,
+  "state": "remediated",
+  "evidence_ids": [
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5"
+  ],
+  "trace": [
+    {
+      "kind": "source",
+      "line": 32,
+      "content": "order_id = request.args.get(\"id\")"
+    },
+    {
+      "kind": "intermediate",
+      "line": 35,
+      "content": "q = \"SELECT id, item, qty FROM orders WHERE id = '\" + order_id + \"'\""
+    },
+    {
+      "kind": "sink",
+      "line": 37,
+      "content": "rows = conn.execute(q).fetchall()  # @vuln sqli"
+    }
+  ],
+  "extra": {
+    "also_reported_by": [
+      "bandit"
+    ]
+  }
+}

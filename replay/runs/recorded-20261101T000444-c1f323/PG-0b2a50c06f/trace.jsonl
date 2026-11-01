@@ -1,0 +1,3 @@
+{"seq": 12, "case_id": "PG-0b2a50c06f", "activity": "FINDING_INGESTED", "ts": "2026-11-01T00:06:00.946662+00:00", "resource": "guard", "attributes": {"run_mode": "LIVE", "rule_id": "B608"}}
+{"seq": 13, "case_id": "PG-0b2a50c06f", "activity": "EVIDENCE_BUILT", "ts": "2026-11-01T00:06:00.955659+00:00", "resource": "evidence", "attributes": {"run_mode": "LIVE", "evidence_ids": ["E1", "E2", "E3", "E4"]}}
+{"seq": 14, "case_id": "PG-0b2a50c06f", "activity": "FALSE_POSITIVE_DROPPED", "ts": "2026-11-01T00:06:11.760095+00:00", "resource": "adjudicator", "attributes": {"run_mode": "LIVE", "score": 0.0, "cited_evidence": ["E1", "E2", "E3", "E4"]}}

@@ -1,0 +1,44 @@
+[
+  {
+    "role": "topology",
+    "model": "muse-spark-1.3-contributor",
+    "base_url_host": "opencode.ai",
+    "structured_mode": "auto",
+    "structured_output": true,
+    "session_header_sent": true,
+    "latency_ms": 12686.281,
+    "usage": {
+      "completion_tokens": 2055,
+      "prompt_tokens": 2009,
+      "total_tokens": 4064,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 1666,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cache_write_tokens": null,
+        "cached_tokens": 0,
+        "image_tokens": null,
+        "text_tokens": null
+      },
+      "cost": 0,
+      "opencode": {
+        "billing_source": "go",
+        "list_cost": 0.0006119,
+        "allowance": 0.0006119,
+        "tokens": {
+          "input": 2009,
+          "output": 2055,
+          "reasoning": 1666,
+          "cache_read": 0,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        }
+      }
+    }
+  }
+]

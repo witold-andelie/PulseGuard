@@ -1,0 +1,44 @@
+{
+  "case_id": "PG-0b2a50c06f",
+  "fingerprint": "0b2a50c06f88ab96c296bee1ed7be29b69757c8e2e52ede4b5fb091a82f1a61e",
+  "rule_id": "B608",
+  "scanner": "bandit",
+  "severity": "medium",
+  "message": "Possible SQL injection vector through string-based query construction.",
+  "file": "routes.py",
+  "line": 48,
+  "state": "false_positive",
+  "evidence_ids": [
+    "E1",
+    "E2",
+    "E3",
+    "E4"
+  ],
+  "trace": [
+    {
+      "kind": "source",
+      "line": 43,
+      "content": "raw_number = request.args.get(\"number\")"
+    },
+    {
+      "kind": "intermediate",
+      "line": 45,
+      "content": "order_number = int(raw_number)"
+    },
+    {
+      "kind": "intermediate",
+      "line": 48,
+      "content": "number_query = \"SELECT id, item, qty FROM orders WHERE id = \" + str(order_number)"
+    },
+    {
+      "kind": "sink",
+      "line": 50,
+      "content": "rows = conn.execute(number_query).fetchall()  # @safe sqli: int-cast; Bandit B608 match"
+    }
+  ],
+  "extra": {
+    "test_id": "B608",
+    "confidence": "LOW",
+    "severity": "MEDIUM"
+  }
+}
