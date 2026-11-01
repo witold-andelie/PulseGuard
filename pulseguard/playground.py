@@ -1285,8 +1285,10 @@ EXAMPLES: list[dict[str, str]] = [
         "Order id sprintf'd into mysql_query. Grammar tier; memory-safety not analysed.",
         "c", "grammar",
         "#include <mysql.h>\n"
-        "#include <stdio.h>\n\n"
-        "void lookup_order(MYSQL *conn, const char *order_id) {\n"
+        "#include <stdio.h>\n"
+        "#include <stdlib.h>\n\n"
+        "void lookup_order(MYSQL *conn) {\n"
+        "    const char *order_id = getenv(\"ORDER_ID\");  /* CGI-style input */\n"
         "    char sql[512];\n"
         "    sprintf(sql, \"SELECT id, item FROM orders WHERE id = '%s'\", order_id);\n"
         "    mysql_query(conn, sql);\n"
@@ -1297,8 +1299,10 @@ EXAMPLES: list[dict[str, str]] = [
         "mysql_stmt_prepare with a bound parameter. Grammar tier.",
         "c", "grammar",
         "#include <mysql.h>\n"
+        "#include <stdlib.h>\n"
         "#include <string.h>\n\n"
-        "void lookup_order(MYSQL *conn, const char *order_id) {\n"
+        "void lookup_order(MYSQL *conn) {\n"
+        "    const char *order_id = getenv(\"ORDER_ID\");  /* CGI-style input */\n"
         "    MYSQL_STMT *stmt = mysql_stmt_init(conn);\n"
         "    const char *sql = \"SELECT id, item FROM orders WHERE id = ?\";\n"
         "    mysql_stmt_prepare(stmt, sql, strlen(sql));\n"
@@ -1314,9 +1318,11 @@ EXAMPLES: list[dict[str, str]] = [
         "cpp-sqlite-concat", "C++ SQLite string concatenation",
         "std::string concatenated into sqlite3_exec. Grammar tier; memory-safety not analysed.",
         "cpp", "grammar",
+        "#include <cstdlib>\n"
         "#include <sqlite3.h>\n"
         "#include <string>\n\n"
-        "void lookup_order(sqlite3 *db, const std::string &order_id) {\n"
+        "void lookup_order(sqlite3 *db) {\n"
+        "    const std::string order_id = std::getenv(\"ORDER_ID\");  // CGI-style input\n"
         "    std::string sql =\n"
         "        \"SELECT id, item FROM orders WHERE id = '\" + order_id + \"'\";\n"
         "    sqlite3_exec(db, sql.c_str(), nullptr, nullptr, nullptr);\n"
@@ -1326,9 +1332,11 @@ EXAMPLES: list[dict[str, str]] = [
         "cpp-sqlite-prepare", "C++ SQLite prepare and bind (safe)",
         "sqlite3_prepare_v2 with sqlite3_bind_text. Grammar tier.",
         "cpp", "grammar",
+        "#include <cstdlib>\n"
         "#include <sqlite3.h>\n"
         "#include <string>\n\n"
-        "void lookup_order(sqlite3 *db, const std::string &order_id) {\n"
+        "void lookup_order(sqlite3 *db) {\n"
+        "    const std::string order_id = std::getenv(\"ORDER_ID\");  // CGI-style input\n"
         "    sqlite3_stmt *stmt = nullptr;\n"
         "    const char *sql = \"SELECT id, item FROM orders WHERE id = ?\";\n"
         "    sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);\n"
@@ -1341,9 +1349,11 @@ EXAMPLES: list[dict[str, str]] = [
         "cpp-libpq-pqexec", "C++ libpq PQexec concatenation",
         "Order id concatenated into PQexec. Grammar tier; memory-safety not analysed.",
         "cpp", "grammar",
+        "#include <cstdlib>\n"
         "#include <libpq-fe.h>\n"
         "#include <string>\n\n"
-        "void lookup_order(PGconn *conn, const std::string &order_id) {\n"
+        "void lookup_order(PGconn *conn) {\n"
+        "    const std::string order_id = std::getenv(\"ORDER_ID\");  // CGI-style input\n"
         "    std::string sql =\n"
         "        \"SELECT id, item FROM orders WHERE id = '\" + order_id + \"'\";\n"
         "    PGresult *res = PQexec(conn, sql.c_str());\n"
@@ -1354,9 +1364,11 @@ EXAMPLES: list[dict[str, str]] = [
         "cpp-libpq-pqexecparams", "C++ libpq PQexecParams (safe)",
         "PQexecParams with a $1 placeholder. Grammar tier.",
         "cpp", "grammar",
+        "#include <cstdlib>\n"
         "#include <libpq-fe.h>\n"
         "#include <string>\n\n"
-        "void lookup_order(PGconn *conn, const std::string &order_id) {\n"
+        "void lookup_order(PGconn *conn) {\n"
+        "    const std::string order_id = std::getenv(\"ORDER_ID\");  // CGI-style input\n"
         "    const char *sql = \"SELECT id, item FROM orders WHERE id = $1\";\n"
         "    const char *values[1] = {order_id.c_str()};\n"
         "    PGresult *res = PQexecParams(\n"
