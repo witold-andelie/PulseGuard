@@ -9,6 +9,8 @@ RUNTIME_ID="${GCP_RUNTIME_ID:-pulseguard-run}"
 MUSE_SECRET="${GCP_MUSE_SECRET:-PG_PLAYGROUND_MUSE_API_KEY}"
 NEMOTRON_SECRET="${GCP_NEMOTRON_SECRET:-PG_PLAYGROUND_NEMOTRON_API_KEY}"
 IMAGE_NAME="${GCP_IMAGE_NAME:-pulseguard}"
+# One warm instance avoids an ~8 s cold start behind the front door; set 0 to scale to zero.
+MIN_INSTANCES="${GCP_MIN_INSTANCES:-1}"
 IMAGE_TAG="${GCP_IMAGE_TAG:-${GITHUB_SHA:-$(date -u +%Y%m%dT%H%M%SZ)}}"
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${PROJECT_ID:?Set GCP_PROJECT_ID or PROJECT_ID}"
@@ -41,7 +43,7 @@ immutable="$image@$digest"
 echo "Deploying immutable image $immutable"
 gc run deploy "$SERVICE" --region="$REGION" --image="$immutable" \
     --service-account="$RUNTIME_ID@$PROJECT_ID.iam.gserviceaccount.com" \
-    --allow-unauthenticated --port=8080 --min=0 --max=2 --min-instances=0 --max-instances=2 \
+    --allow-unauthenticated --port=8080 --min="$MIN_INSTANCES" --max=2 --min-instances="$MIN_INSTANCES" --max-instances=2 \
     --cpu-throttling \
     --cpu=2 --memory=2Gi --concurrency=20 --timeout=300 \
     --set-env-vars='PG_MODE=replay,PG_DB_PATH=/tmp/pulseguard.sqlite,PG_PLAYGROUND_MUSE_BASE_URL=https://opencode.ai/inference/go/openai/v1,PG_PLAYGROUND_MUSE_NAME=muse-spark-1.3-contributor,PG_PLAYGROUND_MUSE_SESSION_HEADER=x-opencode-session,PG_PLAYGROUND_NEMOTRON_BASE_URL=https://integrate.api.nvidia.com/v1,PG_PLAYGROUND_NEMOTRON_NAME=nvidia/nemotron-3-ultra-550b-a55b,PG_PLAYGROUND_NEMOTRON_STRUCTURED=off,PG_PLAYGROUND_DAILY_CALLS=1000' \

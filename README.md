@@ -543,8 +543,9 @@ Live since **1 November 2026**. Share the front door; it opens whichever deploym
 Both serve REPLAY by default plus the public Playground. On the first day the Playground's C
 example took about 10 s on Cloud Run (2 vCPU) and about 60 s on Render's free instance.
 
-**Routing.** The front door reads `endpoints.json` and probes Cloud Run `/health` with an 8 s
-deadline (min instances is 0, so a cold start must fit). HTTP 200 redirects to Cloud Run;
+**Routing.** The front door reads `endpoints.json` and probes Cloud Run `/health` with a 15 s
+deadline. One instance is kept warm, so it normally answers in well under a second; the
+deadline covers a cold start (about 8 s) if the service has scaled down. HTTP 200 redirects to Cloud Run;
 anything else, or no Cloud Run URL, redirects to Render. Without JavaScript it shows both links.
 A "Stay on this page" button stops the redirect. On Cloud Run a small launch adapter
 (`deploy/gcp/health_cors.py`) adds CORS for `GET /health` from the Pages origin only; the
@@ -558,7 +559,7 @@ for push events, at the exact tested SHA) → GitHub OIDC through Workload Ident
 `pages.yml` republishes the front door. `health.yml` probes both deployments daily (07:15 UTC)
 and fails only when **both** are down. Render keeps its own deploy path and is not touched.
 
-**Cloud Run settings.** europe-west3 (Frankfurt, same as Render), min 0 / max 2 instances,
+**Cloud Run settings.** europe-west3 (Frankfurt, same as Render), min 1 / max 2 instances (one kept warm; `GCP_MIN_INSTANCES=0` scales to zero),
 2 vCPU, 2 GiB, concurrency 20, 300 s timeout, CPU throttling, `PG_MODE=replay`,
 `PG_DB_PATH=/tmp/pulseguard.sqlite`, the same `PG_PLAYGROUND_*` endpoint values as Render,
 `PG_PLAYGROUND_DAILY_CALLS=1000`. The two model keys come from Secret Manager

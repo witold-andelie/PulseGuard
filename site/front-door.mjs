@@ -9,7 +9,7 @@ export function chooseEndpoint(cloudRun, status) {
   return cloudRunUrl(cloudRun) && status === 200 ? cloudRun : RENDER;
 }
 
-export async function boundedFetch(url, {fetchImpl = fetch, timeoutMs = 8000, json = false} = {}) {
+export async function boundedFetch(url, {fetchImpl = fetch, timeoutMs = 15000, json = false} = {}) {
   const controller = new AbortController();
   let timer;
   try {
@@ -60,7 +60,7 @@ async function start() {
     link.hidden = false;
   }
   if (stopped) return;
-  status.textContent = cloudRun ? "Checking Google Cloud (up to 8 seconds; a cold start can take a few)…" : "Google Cloud is not configured. Opening Render…";
+  status.textContent = cloudRun ? "Checking Google Cloud (up to 15 seconds while it wakes up)…" : "Google Cloud is not configured. Opening Render…";
   const code = await probeCloudRun(cloudRun);
   if (stopped) return;
   const target = chooseEndpoint(cloudRun, code);

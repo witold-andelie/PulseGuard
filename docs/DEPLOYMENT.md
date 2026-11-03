@@ -9,7 +9,7 @@ creates resources. The scripts were prepared without running gcloud, gh or Docke
 
 ```text
 Browser -> GitHub Pages: https://witold-andelie.github.io/PulseGuard/
-              | GET Cloud Run /health (8-second deadline)
+              | GET Cloud Run /health (15-second deadline)
               +-- HTTP 200 --> Cloud Run (europe-west3, REPLAY)
               +-- anything else --> existing Render (Frankfurt, REPLAY)
 
@@ -23,7 +23,7 @@ Daily health workflow -> both deployments /health and /api/mode -> job summary
 
 The Pages front door selects Cloud Run only when its `/health` returns an observable
 HTTP 200. It falls back on a timeout, a platform error, a failed CORS check or a missing
-endpoint configuration. Configuration fetching also has an 8-second deadline, including
+endpoint configuration. Configuration fetching also has a 15-second deadline, including
 the response body. Links and a status remain visible during the probe; a stop button
 cancels automatic navigation. Without JavaScript, published pages contain ordinary links
 to both deployments after the first successful GCP deployment. Before that, Render is
@@ -102,14 +102,15 @@ project. The unupgraded Free Trial is the no-charge boundary. Upgrading the acco
 that protection and is outside this plan. Do not rerun bootstrap after shutdown: its
 explicit billing-link step can re-enable billing on a still-open account.
 
-Cloud Run uses minimum 0, maximum 2 instances at both service and revision level, 2 vCPU, 2 GiB, concurrency 20,
+Cloud Run keeps minimum 1 (`GCP_MIN_INSTANCES`, set 0 to scale to zero), maximum 2 instances at both service and revision level, 2 vCPU, 2 GiB, concurrency 20,
 request timeout 300 seconds and request-based CPU billing. Revision overlap/platform
 scaling can temporarily exceed the configured instance limit. See Google's
 [maximum instance guidance](https://docs.cloud.google.com/run/docs/configuring/max-instances).
 Registry storage,
 function builds, logs, secrets and network usage can also consume credit. The budget
-function has min 0 and max 1. No always-on SQL, load balancer or paid front-door service
-is added. Public unauthenticated traffic consumes credit. Playground's 1000 daily calls
+function has min 0 and max 1. One warm Cloud Run instance is billed while idle (roughly EUR 20-30 a month, paid from the trial
+credit); it removes an ~8 s cold start that otherwise sends front-door visitors to Render.
+No always-on SQL, load balancer or paid front-door service is added. Public unauthenticated traffic consumes credit. Playground's 1000 daily calls
 are **per process** and reset on restart, so they are not an account-wide model spend
 cap. Muse/NVIDIA provider charges are independent of Google Cloud trial credit.
 
